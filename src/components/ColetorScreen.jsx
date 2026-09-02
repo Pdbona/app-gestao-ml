@@ -3,6 +3,8 @@ import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { NAVY, ORANGE } from '../lib/styles';
 
+const hojeISO = () => new Date().toISOString().slice(0, 10);
+
 // Slot de uma foto obrigatória: tira na hora (câmera do celular, sem opção
 // de galeria — `capture="environment"`) e mostra um preview local (blob URL
 // só nesta sessão). Tocar de novo no preview deixa retirar a foto.
@@ -68,8 +70,11 @@ export default function ColetorScreen({ usuario }) {
   const [fluxos, setFluxos] = useState([]);
   const [tipos, setTipos] = useState([]);
   const [registros, setRegistros] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [planejamentos, setPlanejamentos] = useState([]);
   const [carregando, setCarregando] = useState(true);
 
+  const [clienteId, setClienteId] = useState('');
   const [fluxoId, setFluxoId] = useState('');
   const [tipoId, setTipoId] = useState('');
   const [documentoProcesso, setDocumentoProcesso] = useState('');
@@ -93,10 +98,18 @@ export default function ColetorScreen({ usuario }) {
     const unsubRegistros = onSnapshot(collection(db, 'registrosOperacao'), (snap) => {
       setRegistros(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
+    const unsubClientes = onSnapshot(collection(db, 'clientes'), (snap) => {
+      setClientes(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.status !== 'inativo'));
+    });
+    const unsubPlanejamentos = onSnapshot(collection(db, 'planejamentoOperacional'), (snap) => {
+      setPlanejamentos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
     return () => {
       unsubFluxos();
       unsubTipos();
       unsubRegistros();
+      unsubClientes();
+      unsubPlanejamentos();
     };
   }, []);
 
@@ -115,7 +128,17 @@ export default function ColetorScreen({ usuario }) {
 
   const fluxoDaAtiva = fluxos.find((f) => f.id === operacaoAtiva?.fluxoId);
   const tipoDaAtiva = tipos.find((t) => t.id === operacaoAtiva?.tipoOperacaoId);
+  const clienteDaAtiva = clientes.find((c) => c.id === operacaoAtiva?.clienteId);
   const fluxoSelecionado = fluxos.find((f) => f.id === fluxoId);
+
+  // Teto de MdO pra hoje neste cliente: soma o que o Administrativo
+  // planejou (todos os turnos) em Planejamento Operacional. O operador não
+  // consegue digitar mais que isso — se precisar de mais gente, quem tem
+  // que mexer é o Administrativo, lá no planejamento (regra do Pablo:
+  // "o que foi planejado tem que ser cumprido pelo operador").
+  const mdoPlanejadoHoje = planejamentos
+    .filter((p) => p.clienteId === clienteId && p.data === hojeISO())
+    .reduce((soma, p) => soma + (Number(p.qtdMdo) || 0), 0);
 
   // Zera as fotos de início quando troca de Operação (a quantidade exigida
   // muda de uma pra outra).
@@ -138,12 +161,14 @@ export default function ColetorScreen({ usuario }) {
   ).padStart(2, '0')}`;
 
   const fotosInicioOk = fotosInicio.filter(Boolean).length >= (fluxoSelecionado?.fotosInicio || 0);
+  const mdoDentroDoPlanejado = Number(qtdMdo) > 0 && Number(qtdMdo) <= mdoPlanejadoHoje;
   const podeIniciar =
+    Boolean(clienteId) &&
     Boolean(fluxoId) &&
     Boolean(tipoId) &&
     Boolean(documentoProcesso.trim()) &&
     Number(qtdVolumes) > 0 &&
-    Number(qtdMdo) > 0 &&
+    mdoDentroDoPlanejado &&
     fotosInicioOk;
 
   const fotosFimOk = fotosFim.filter(Boolean).length >= (fluxoDaAtiva?.fotosFim || 0);
@@ -169,6 +194,7 @@ export default function ColetorScreen({ usuario }) {
     setSalvando(true);
     try {
       await addDoc(collection(db, 'registrosOperacao'), {
+        clienteId,
         fluxoId,
         tipoOperacaoId: tipoId,
         documentoProcesso: documentoProcesso.trim(),
@@ -180,6 +206,7 @@ export default function ColetorScreen({ usuario }) {
         fim: null,
         fotosInicioQtd: fotosInicio.filter(Boolean).length
       });
+      setClienteId('');
       setFluxoId('');
       setTipoId('');
       setDocumentoProcesso('');
@@ -222,13 +249,14 @@ export default function ColetorScreen({ usuario }) {
     return <p>Carregando...</p>;
   }
 
-  if (fluxos.length === 0 || tipos.length === 0) {
+  if (fluxos.length === 0 || tipos.length === 0 || clientes.length === 0) {
     return (
       <div style={styles.pagina}>
         <h2 style={styles.tituloPagina}>Coletor</h2>
         <p style={styles.avisoVazio}>
-          Ainda não há {fluxos.length === 0 ? 'Operações' : 'Tipos de Operação'} cadastradas — peça
-          pro Administrador cadastrar em Cadastros → Operação antes de começar a coletar.
+          Ainda não há{' '}
+          {clientes.length === 0 ? 'Clientes' : fluxos.length === 0 ? 'Operações' : 'Tipos de Operação'}{' '}
+          cadastrados — peça pro Administrador cadastrar em Cadastros antes de começar a coletar.
         </p>
       </div>
     );
@@ -241,9 +269,9 @@ export default function ColetorScreen({ usuario }) {
         <div style={styles.card}>
           <div style={styles.cronometro}>{decorridoTexto}</div>
           <p style={styles.infoAtiva}>
-            <strong>{fluxoDaAtiva?.nome || '...'}</strong>
+            <strong>{clienteDaAtiva?.nome || '...'}</strong>
             <br />
-            {tipoDaAtiva?.nome || '...'}
+            {fluxoDaAtiva?.nome || '...'} — {tipoDaAtiva?.nome || '...'}
           </p>
           <div style={styles.tagsAtiva}>
             {operacaoAtiva.documentoProcesso && <span style={styles.tag}>{operacaoAtiva.documentoProcesso}</span>}
@@ -297,7 +325,21 @@ export default function ColetorScreen({ usuario }) {
         <h2 style={styles.tituloCard}>Nova operação</h2>
 
         <label style={styles.rotulo}>
+          Cliente/Local *
+          <span style={styles.ajuda}>Em qual cliente/obra você está agora</span>
+          <select style={styles.input} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+            <option value="">Selecione...</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={styles.rotulo}>
           Tipo de Operação *
+          <span style={styles.ajuda}>O que está sendo manuseado (ex: pneus, geladeira)</span>
           <select style={styles.input} value={tipoId} onChange={(e) => setTipoId(e.target.value)}>
             <option value="">Selecione...</option>
             {tipos.map((t) => (
@@ -310,6 +352,7 @@ export default function ColetorScreen({ usuario }) {
 
         <label style={styles.rotulo}>
           Operação (fluxo) *
+          <span style={styles.ajuda}>Etapa do processo: recebimento, separação, expedição...</span>
           <select style={styles.input} value={fluxoId} onChange={(e) => setFluxoId(e.target.value)}>
             <option value="">Selecione...</option>
             {fluxos.map((f) => (
@@ -322,6 +365,7 @@ export default function ColetorScreen({ usuario }) {
 
         <label style={styles.rotulo}>
           Documento do processo *
+          <span style={styles.ajuda}>Número da NF, Conhecimento ou Pedido</span>
           <input
             type="text"
             inputMode="numeric"
@@ -335,6 +379,7 @@ export default function ColetorScreen({ usuario }) {
         <div style={styles.duasColunas}>
           <label style={styles.rotulo}>
             Qtd. de volumes *
+            <span style={styles.ajuda}>Itens/paletes desta operação</span>
             <input
               type="number"
               inputMode="numeric"
@@ -346,16 +391,34 @@ export default function ColetorScreen({ usuario }) {
           </label>
           <label style={styles.rotulo}>
             Qtd. de MdO *
+            <span style={styles.ajuda}>
+              {clienteId
+                ? `Colaboradores nesta operação (máx. ${mdoPlanejadoHoje} planejado hoje)`
+                : 'Colaboradores dedicados a esta operação'}
+            </span>
             <input
               type="number"
               inputMode="numeric"
               min="1"
+              max={clienteId ? mdoPlanejadoHoje : undefined}
               style={styles.input}
               value={qtdMdo}
               onChange={(e) => setQtdMdo(e.target.value)}
             />
           </label>
         </div>
+        {clienteId && mdoPlanejadoHoje === 0 && (
+          <p style={styles.avisoPlanejamento}>
+            ⚠️ Não há MdO planejada pra hoje neste cliente. Peça pro Administrativo lançar em
+            Planejamento antes de iniciar.
+          </p>
+        )}
+        {clienteId && mdoPlanejadoHoje > 0 && Number(qtdMdo) > mdoPlanejadoHoje && (
+          <p style={styles.avisoPlanejamento}>
+            ⚠️ Só há {mdoPlanejadoHoje} colaborador(es) planejado(s) pra hoje. Se precisar de mais,
+            peça pro Administrativo ajustar o Planejamento.
+          </p>
+        )}
 
         {fluxoSelecionado && (
           <GradeFotos
@@ -397,6 +460,16 @@ const styles = {
   tituloCard: { margin: '0 0 18px', color: NAVY, fontSize: 20, textAlign: 'center' },
 
   rotulo: { display: 'flex', flexDirection: 'column', fontSize: 14, fontWeight: 600, color: '#444', gap: 6, marginBottom: 16 },
+  ajuda: { fontSize: 11, fontWeight: 400, color: '#999', marginTop: -4 },
+  avisoPlanejamento: {
+    background: '#FFF3E0',
+    color: '#B85700',
+    fontSize: 12,
+    padding: '8px 10px',
+    borderRadius: 6,
+    marginTop: -8,
+    marginBottom: 14
+  },
   input: {
     padding: '13px 12px',
     borderRadius: 8,

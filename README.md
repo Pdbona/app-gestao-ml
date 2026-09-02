@@ -20,19 +20,25 @@ Estrutura e padrões seguem a skill `sbs-webapp` do workspace SBS Solution.
   ver `src/components/GestaoML.jsx`)
 - ✅ RBAC completo: perfis com permissões por aba/ação, e permissões
   personalizadas por usuário sobrepondo o perfil
+- ✅ Layout: cabeçalho centralizado (logo ML em destaque) + navegação
+  principal (Dashboard/Cadastros) na lateral esquerda
 - ✅ Aba **Dashboard** (default ao entrar — placeholder com contadores, os
   gráficos de operação entram quando definirmos o que precisa aparecer)
-- ✅ Aba **Cadastros**, com 5 sub-telas:
-  - **Clientes** — cadastro completo (criar/editar/excluir)
-  - **Perfis** — perfil "Administrador" fixo + perfis personalizados, com
+- ✅ Aba **Cadastros**, com 4 itens (Cliente/Perfil/Usuários soltos, Operação
+  agrupando duas sub-telas):
+  - **Cliente** — cadastro completo (criar/editar/excluir)
+  - **Perfil** — perfil "Administrador" fixo + perfis personalizados, com
     matriz de permissões (abas + ações por seção de Cadastros)
   - **Usuários** — nome/senha alfanumérica, vínculo a um perfil, e
     permissões customizadas opcionais por usuário
-  - **Tipos de Operação** — meta de tempo por tipo + motor de calibragem
-    (sugere ajuste depois de 5 registros início/fim, depois a cada 10,
-    tolerância de 10% — nunca aplica sozinho; ver `src/lib/calibragem.js`)
-  - **Fluxos** — Recebimento/Expedição/Separação/Outros, com qtd. de fotos
-    obrigatórias no início e no fim de cada um
+  - **Operação** (grupo, ver `src/components/cadastros/CadastrosScreen.jsx`):
+    - **Tipo de Operação** — meta de tempo por tipo + motor de calibragem
+      (sugere ajuste depois de 5 registros início/fim, depois a cada 10,
+      tolerância de 10% — nunca aplica sozinho; ver `src/lib/calibragem.js`)
+    - **Operação** (Recebimento/Expedição/Separação/Outros) — qtd. de fotos
+      obrigatórias no início e no fim de cada uma (0 = não obrigatório);
+      isso vai definir o que o futuro perfil de Operação (coletor) precisa
+      preencher
 - ⏳ Falta a tela de **registro de operações** em si (abrir/fechar uma
   operação de um tipo, tirando as fotos exigidas pelo fluxo) — é o que
   alimenta a calibragem de metas; ainda não foi pedida/desenhada

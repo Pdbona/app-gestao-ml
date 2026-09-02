@@ -13,13 +13,20 @@
 // (ex: um Conferente que também pode editar Fluxos, sem virar um perfil novo
 // pra isso). `mergePermissoes` faz essa combinação.
 
+// `grupo` agrupa seções relacionadas dentro de Cadastros (ex: Tipo de
+// Operação e Operação vivem juntas sob "Operação" na navegação), sem mudar
+// o `id` de cada uma — é só uma dica de UI pro CadastrosScreen.
 export const SECOES_CADASTRO = [
-  { id: 'clientes', label: 'Clientes' },
-  { id: 'perfis', label: 'Perfis' },
+  { id: 'clientes', label: 'Cliente' },
+  { id: 'perfis', label: 'Perfil' },
   { id: 'usuarios', label: 'Usuários' },
-  { id: 'tiposOperacao', label: 'Tipos de Operação' },
-  { id: 'fluxos', label: 'Fluxos' }
+  { id: 'tiposOperacao', label: 'Tipo de Operação', grupo: 'operacao' },
+  { id: 'fluxos', label: 'Operação', grupo: 'operacao' }
 ];
+
+export const GRUPOS_CADASTRO = {
+  operacao: { label: 'Operação' }
+};
 
 export const ACOES_CADASTRO = ['visualizar', 'criar', 'editar', 'deletar'];
 

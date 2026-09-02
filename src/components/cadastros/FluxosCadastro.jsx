@@ -59,7 +59,7 @@ export default function FluxosCadastro({ permissoes }) {
 
   const salvar = async () => {
     if (!form.nome.trim()) {
-      setErro('Informe o nome do fluxo.');
+      setErro('Informe o nome da operação.');
       return;
     }
     setSalvando(true);
@@ -84,7 +84,7 @@ export default function FluxosCadastro({ permissoes }) {
   };
 
   const excluir = async (fluxo) => {
-    if (!window.confirm(`Excluir o fluxo "${fluxo.nome}"?`)) return;
+    if (!window.confirm(`Excluir a operação "${fluxo.nome}"?`)) return;
     try {
       await deleteDoc(doc(db, 'fluxos', fluxo.id));
     } catch (e) {
@@ -112,7 +112,7 @@ export default function FluxosCadastro({ permissoes }) {
   return (
     <div>
       <div style={ui.sectionHeaderRow}>
-        <h2 style={ui.sectionTitle}>Fluxos</h2>
+        <h2 style={ui.sectionTitle}>Operação</h2>
         <div style={{ display: 'flex', gap: 10 }}>
           {perm.criar && faltamPadroes && !carregando && (
             <button style={ui.secondaryButton} onClick={criarPadroes} disabled={salvando}>
@@ -121,27 +121,28 @@ export default function FluxosCadastro({ permissoes }) {
           )}
           {perm.criar && !formAberto && (
             <button style={ui.primaryButton} onClick={abrirNovo}>
-              ➕ Novo fluxo (Outros)
+              ➕ Nova operação (Outros)
             </button>
           )}
         </div>
       </div>
 
       <p style={ui.placeholderNote}>
-        Cada fluxo define quantas fotos são obrigatórias no início e no fim das operações desse
-        tipo. Recebimento, Expedição e Separação são os fluxos padrão — qualquer outro nome
-        cadastrado aqui entra como "Outros".
+        Cada operação define quantas fotos são obrigatórias no início e no fim (0 = não
+        obrigatório). Recebimento, Expedição e Separação são as operações padrão — qualquer outro
+        nome cadastrado aqui entra como "Outros". Isso vai definir o que o perfil de Operação
+        (coletor) precisa preencher em cada uma.
       </p>
 
       {erro && <div style={ui.erro}>❌ {erro}</div>}
 
       {formAberto && (
         <div style={ui.formCard}>
-          <h3 style={{ marginTop: 0 }}>{editandoId ? 'Editar fluxo' : 'Novo fluxo'}</h3>
+          <h3 style={{ marginTop: 0 }}>{editandoId ? 'Editar operação' : 'Nova operação'}</h3>
 
           <div style={ui.formGrid}>
             <label style={ui.label}>
-              Nome do fluxo *
+              Nome da operação *
               <input style={ui.input} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
             </label>
             <label style={ui.label}>
@@ -189,9 +190,9 @@ export default function FluxosCadastro({ permissoes }) {
       )}
 
       {carregando ? (
-        <p>Carregando fluxos...</p>
+        <p>Carregando operações...</p>
       ) : fluxos.length === 0 ? (
-        <p style={ui.placeholderNote}>Nenhum fluxo cadastrado ainda.</p>
+        <p style={ui.placeholderNote}>Nenhuma operação cadastrada ainda.</p>
       ) : (
         <div style={ui.tableWrapper}>
           <table style={ui.table}>

@@ -171,7 +171,7 @@ export default function TiposOperacaoCadastro({ permissoes }) {
   return (
     <div>
       <div style={ui.sectionHeaderRow}>
-        <h2 style={ui.sectionTitle}>Tipos de Operação</h2>
+        <h2 style={ui.sectionTitle}>Tipo de Operação</h2>
         {perm.criar && !formAberto && (
           <button style={ui.primaryButton} onClick={abrirNovo}>
             ➕ Novo tipo de operação

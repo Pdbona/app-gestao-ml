@@ -170,47 +170,50 @@ export default function GestaoML() {
   ].filter(Boolean);
 
   return (
-    <div>
+    <div style={styles.appShell}>
       <div style={styles.appHeader}>
-        <div style={styles.appHeaderInner}>
-          <div style={styles.appBrandRow}>
-            <div style={styles.logoChipSmall}>
-              <img src={LOGO_ML} alt="ML Serviços" style={styles.logoMlApp} />
-            </div>
-            <p style={styles.appSubtitle}>Sistema de Gestão</p>
+        <div style={styles.appHeaderSide} />
+        <div style={styles.appHeaderCenter}>
+          <div style={styles.logoChipSmall}>
+            <img src={LOGO_ML} alt="ML Serviços" style={styles.logoMlApp} />
           </div>
-          <div style={styles.userBox}>
-            <span>{usuarioAtivo.nome}</span>
-            <button style={styles.logoutButton} onClick={() => setUsuarioAtivo(null)}>
-              Sair
-            </button>
-          </div>
+          <p style={styles.appSubtitle}>Sistema de Gestão</p>
+        </div>
+        <div style={{ ...styles.appHeaderSide, ...styles.userBox }}>
+          <span>{usuarioAtivo.nome}</span>
+          <button style={styles.logoutButton} onClick={() => setUsuarioAtivo(null)}>
+            Sair
+          </button>
         </div>
       </div>
       <div style={styles.orangeBar} />
 
-      <div style={styles.tabsRow}>
-        {abas.map((aba) => (
-          <button
-            key={aba.id}
-            onClick={() => setAbaAtual(aba.id)}
-            style={{ ...styles.tabButton, ...(abaAtual === aba.id ? styles.tabButtonAtivo : {}) }}
-          >
-            {aba.label}
-          </button>
-        ))}
-      </div>
+      <div style={styles.bodyRow}>
+        <nav style={styles.sidebar}>
+          {abas.map((aba) => (
+            <button
+              key={aba.id}
+              onClick={() => setAbaAtual(aba.id)}
+              style={{ ...styles.sidebarButton, ...(abaAtual === aba.id ? styles.sidebarButtonAtivo : {}) }}
+            >
+              {aba.label}
+            </button>
+          ))}
+        </nav>
 
-      <div style={styles.content}>
-        {abaAtual === 'dashboard' && permissoes.abas?.dashboard && <DashboardTab />}
-        {abaAtual === 'cadastros' && permissoes.abas?.cadastros && <CadastrosScreen permissoes={permissoes} />}
+        <div style={styles.content}>
+          {abaAtual === 'dashboard' && permissoes.abas?.dashboard && <DashboardTab />}
+          {abaAtual === 'cadastros' && permissoes.abas?.cadastros && <CadastrosScreen permissoes={permissoes} />}
+        </div>
       </div>
 
       <div style={styles.footer}>
         <div style={styles.footerOrangeBar} />
-        <p style={styles.footerDevBy}>Desenvolvido por</p>
-        <div style={styles.footerSbsChip}>
-          <img src={LOGO_SBS} alt="SBS Solution" style={styles.logoSbsFooter} />
+        <div style={styles.footerRow}>
+          <div style={styles.footerSbsChip}>
+            <img src={LOGO_SBS} alt="SBS Solution" style={styles.logoSbsFooter} />
+          </div>
+          <span style={styles.footerText}>Desenvolvido pela SBS Solution e Byplo.</span>
         </div>
       </div>
     </div>
@@ -260,26 +263,28 @@ const styles = {
     fontSize: 15
   },
 
-  appHeader: { background: `linear-gradient(135deg, ${NAVY}, ${NAVY_LIGHT})`, color: '#FFF', padding: '18px 24px' },
-  appHeaderInner: {
-    maxWidth: 1100,
-    margin: '0 auto',
+  appShell: { display: 'flex', flexDirection: 'column', minHeight: '100vh' },
+
+  appHeader: {
+    background: `linear-gradient(135deg, ${NAVY}, ${NAVY_LIGHT})`,
+    color: '#FFF',
+    padding: '20px 24px',
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 12
+    justifyContent: 'space-between',
+    gap: 16
   },
-  appBrandRow: { display: 'flex', alignItems: 'center', gap: 14 },
+  appHeaderSide: { flex: '1 1 0', minWidth: 100, display: 'flex', justifyContent: 'flex-end' },
+  appHeaderCenter: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 },
   logoChipSmall: {
     display: 'inline-flex',
     background: '#FFF',
-    borderRadius: 8,
-    padding: '6px 12px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.15)'
+    borderRadius: 10,
+    padding: '8px 20px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
   },
-  logoMlApp: { height: 32, width: 'auto', display: 'block' },
-  appSubtitle: { margin: 0, fontSize: 12, opacity: 0.85 },
+  logoMlApp: { height: 44, width: 'auto', display: 'block' },
+  appSubtitle: { margin: 0, fontSize: 15, fontWeight: 600, letterSpacing: 0.5, opacity: 0.9 },
   userBox: { display: 'flex', alignItems: 'center', gap: 12, fontSize: 14 },
   logoutButton: {
     padding: '6px 14px',
@@ -290,28 +295,41 @@ const styles = {
     cursor: 'pointer'
   },
 
-  tabsRow: { maxWidth: 1100, margin: '0 auto', padding: '12px 24px 0', display: 'flex', gap: 8, flexWrap: 'wrap' },
-  tabButton: {
-    padding: '10px 16px',
-    background: '#E8E8E8',
+  bodyRow: { display: 'flex', flex: 1, alignItems: 'stretch' },
+  sidebar: {
+    width: 200,
+    flexShrink: 0,
+    background: '#FFF',
+    borderRight: '1px solid #E5E5E5',
+    padding: '20px 12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6
+  },
+  sidebarButton: {
+    textAlign: 'left',
+    padding: '12px 16px',
+    background: 'transparent',
     color: '#333',
     border: 'none',
-    borderRadius: '4px 4px 0 0',
+    borderRadius: 6,
     cursor: 'pointer',
-    fontWeight: 600
+    fontWeight: 600,
+    fontSize: 14
   },
-  tabButtonAtivo: { background: NAVY, color: '#FFF' },
+  sidebarButtonAtivo: { background: NAVY, color: '#FFF' },
 
-  content: { maxWidth: 1100, margin: '0 auto', padding: '20px 24px 60px' },
+  content: { flex: 1, padding: '24px 28px 60px', minWidth: 0 },
 
-  footer: { background: NAVY, color: '#FFF', textAlign: 'center', padding: '24px 20px' },
-  footerOrangeBar: { height: 4, background: ORANGE, margin: '-24px -20px 20px' },
-  footerDevBy: { margin: '0 0 10px', fontSize: 11, color: '#AAA', textTransform: 'uppercase', letterSpacing: 1 },
+  footer: { background: NAVY, color: '#FFF', padding: '18px 20px' },
+  footerOrangeBar: { height: 4, background: ORANGE, margin: '-18px -20px 16px' },
+  footerRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' },
   footerSbsChip: {
     display: 'inline-flex',
     background: '#FFF',
     borderRadius: 8,
-    padding: '6px 14px'
+    padding: '4px 12px'
   },
-  logoSbsFooter: { height: 26, width: 'auto', display: 'block' }
+  logoSbsFooter: { height: 22, width: 'auto', display: 'block' },
+  footerText: { fontSize: 13, color: '#DDD' }
 };

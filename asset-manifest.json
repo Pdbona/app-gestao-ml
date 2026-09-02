@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/app-gestao-ml/static/css/main.502a81fb.css",
-    "main.js": "/app-gestao-ml/static/js/main.2ac02866.js",
+    "main.js": "/app-gestao-ml/static/js/main.fd6a668b.js",
     "index.html": "/app-gestao-ml/index.html",
     "main.502a81fb.css.map": "/app-gestao-ml/static/css/main.502a81fb.css.map",
-    "main.2ac02866.js.map": "/app-gestao-ml/static/js/main.2ac02866.js.map"
+    "main.fd6a668b.js.map": "/app-gestao-ml/static/js/main.fd6a668b.js.map"
   },
   "entrypoints": [
     "static/css/main.502a81fb.css",
-    "static/js/main.2ac02866.js"
+    "static/js/main.fd6a668b.js"
   ]
 }

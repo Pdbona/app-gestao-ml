@@ -4,6 +4,8 @@ import { NAVY } from '../../lib/styles';
 import ClientesCadastro from './ClientesCadastro';
 import PerfisCadastro from './PerfisCadastro';
 import UsuariosCadastro from './UsuariosCadastro';
+import ColaboradoresCadastro from './ColaboradoresCadastro';
+import TurnosCadastro from './TurnosCadastro';
 import TiposOperacaoCadastro from './TiposOperacaoCadastro';
 import FluxosCadastro from './FluxosCadastro';
 
@@ -11,6 +13,8 @@ const TELAS = {
   clientes: ClientesCadastro,
   perfis: PerfisCadastro,
   usuarios: UsuariosCadastro,
+  colaboradores: ColaboradoresCadastro,
+  turnos: TurnosCadastro,
   tiposOperacao: TiposOperacaoCadastro,
   fluxos: FluxosCadastro
 };

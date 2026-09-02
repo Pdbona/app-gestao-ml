@@ -11,7 +11,17 @@ import {
   orderBy,
   serverTimestamp
 } from 'firebase/firestore';
-import { ui } from '../../lib/styles';
+import QRCode from 'qrcode';
+import { ui, NAVY } from '../../lib/styles';
+
+// URL que o QR Code do Cliente/Local aponta — cai direto na tela pública
+// de check-in (CheckinPublicScreen.jsx via App.jsx), sem passar pelo
+// login do sistema. `?checkin=<id>` funciona em qualquer host estático
+// (GitHub Pages incluso) sem precisar de rota por path.
+function montarUrlCheckin(clienteId) {
+  const base = `${window.location.origin}${process.env.PUBLIC_URL}/`;
+  return `${base}?checkin=${clienteId}`;
+}
 
 const CLIENTE_VAZIO = {
   nome: '',
@@ -73,6 +83,9 @@ export default function ClientesCadastro({ permissoes }) {
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [capturandoGeo, setCapturandoGeo] = useState(false);
   const [erro, setErro] = useState('');
+  const [qrCliente, setQrCliente] = useState(null);
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [gerandoQr, setGerandoQr] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'clientes'), orderBy('nome'));
@@ -179,6 +192,25 @@ export default function ClientesCadastro({ permissoes }) {
     } catch (e) {
       setErro('Falha ao excluir. Tente novamente.');
     }
+  };
+
+  const gerarQr = async (cliente) => {
+    setGerandoQr(true);
+    setQrCliente(cliente);
+    try {
+      const url = await QRCode.toDataURL(montarUrlCheckin(cliente.id), { width: 320, margin: 1 });
+      setQrDataUrl(url);
+    } catch (e) {
+      setErro('Falha ao gerar o QR Code.');
+      setQrCliente(null);
+    } finally {
+      setGerandoQr(false);
+    }
+  };
+
+  const fecharQr = () => {
+    setQrCliente(null);
+    setQrDataUrl('');
   };
 
   const enderecoResumo = (c) => {
@@ -322,6 +354,9 @@ export default function ClientesCadastro({ permissoes }) {
                         Editar
                       </button>
                     )}
+                    <button style={ui.linkButton} onClick={() => gerarQr(c)}>
+                      🔗 QR Code
+                    </button>
                     {perm.deletar && (
                       <button style={{ ...ui.linkButton, color: '#D32F2F' }} onClick={() => excluir(c)}>
                         Excluir
@@ -334,6 +369,58 @@ export default function ClientesCadastro({ permissoes }) {
           </table>
         </div>
       )}
+
+      {qrCliente && (
+        <div style={styles.overlay} onClick={fecharQr}>
+          <div style={styles.qrModal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, color: NAVY }}>QR Code — {qrCliente.nome}</h3>
+            <p style={ui.placeholderNote}>
+              Imprima e fixe no Cliente/Local. O colaborador escaneia pra confirmar presença.
+            </p>
+            {gerandoQr ? (
+              <p>Gerando...</p>
+            ) : (
+              qrDataUrl && <img src={qrDataUrl} alt={`QR Code de ${qrCliente.nome}`} style={styles.qrImg} />
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              {qrDataUrl && (
+                <a
+                  href={qrDataUrl}
+                  download={`qrcode-${qrCliente.nome.replace(/\s+/g, '-').toLowerCase()}.png`}
+                  style={{ ...ui.primaryButton, textDecoration: 'none', display: 'inline-block' }}
+                >
+                  ⬇️ Baixar PNG
+                </a>
+              )}
+              <button style={ui.secondaryButton} onClick={fecharQr}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const styles = {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000
+  },
+  qrModal: {
+    background: '#FFF',
+    borderRadius: 10,
+    padding: 28,
+    maxWidth: 380,
+    width: '90%',
+    textAlign: 'center',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.25)'
+  },
+  qrImg: { width: '100%', maxWidth: 280, height: 'auto' }
+};

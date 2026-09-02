@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import QRCode from 'qrcode';
 import { ui, NAVY } from '../../lib/styles';
+import { redimensionarImagemParaBase64 } from '../../lib/imagem';
 
 // URL que o QR Code do Cliente/Local aponta — cai direto na tela pública
 // de check-in (CheckinPublicScreen.jsx via App.jsx), sem passar pelo
@@ -34,7 +35,8 @@ const CLIENTE_VAZIO = {
   status: 'ativo',
   geoLat: null,
   geoLng: null,
-  geoCapturadoEm: null
+  geoCapturadoEm: null,
+  logoBase64: null
 };
 
 // CEP só dá o endereço "geral" (rua/bairro/cidade) — não a coordenada exata.
@@ -82,6 +84,7 @@ export default function ClientesCadastro({ permissoes }) {
   const [salvando, setSalvando] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [capturandoGeo, setCapturandoGeo] = useState(false);
+  const [processandoLogo, setProcessandoLogo] = useState(false);
   const [erro, setErro] = useState('');
   const [qrCliente, setQrCliente] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -119,7 +122,8 @@ export default function ClientesCadastro({ permissoes }) {
       status: cliente.status || 'ativo',
       geoLat: cliente.geoLat ?? null,
       geoLng: cliente.geoLng ?? null,
-      geoCapturadoEm: cliente.geoCapturadoEm ?? null
+      geoCapturadoEm: cliente.geoCapturadoEm ?? null,
+      logoBase64: cliente.logoBase64 ?? null
     });
     setEditandoId(cliente.id);
     setFormAberto(true);
@@ -163,6 +167,24 @@ export default function ClientesCadastro({ permissoes }) {
       setCapturandoGeo(false);
     }
   };
+
+  const handleLogoChange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // permite escolher o mesmo arquivo de novo depois de remover
+    if (!file) return;
+    setProcessandoLogo(true);
+    setErro('');
+    try {
+      const dataUrl = await redimensionarImagemParaBase64(file);
+      setForm((f) => ({ ...f, logoBase64: dataUrl }));
+    } catch (e2) {
+      setErro(e2.message || 'Não foi possível processar essa imagem.');
+    } finally {
+      setProcessandoLogo(false);
+    }
+  };
+
+  const removerLogo = () => setForm((f) => ({ ...f, logoBase64: null }));
 
   const salvar = async () => {
     if (!form.nome.trim()) {
@@ -304,6 +326,34 @@ export default function ClientesCadastro({ permissoes }) {
             )}
           </div>
 
+          <h4 style={{ marginBottom: 8, color: '#1E3A5F' }}>Logo do cliente</h4>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+            {form.logoBase64 && (
+              <img src={form.logoBase64} alt="Logo do cliente" style={styles.logoPreview} />
+            )}
+            <div>
+              <label style={ui.secondaryButton}>
+                {processandoLogo ? 'Processando...' : form.logoBase64 ? 'Trocar logo' : '🖼️ Escolher logo'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleLogoChange}
+                  disabled={processandoLogo}
+                />
+              </label>
+              {form.logoBase64 && (
+                <button type="button" style={{ ...ui.linkButton, marginLeft: 10 }} onClick={removerLogo}>
+                  Remover
+                </button>
+              )}
+              <p style={{ ...ui.placeholderNote, marginTop: 6, marginBottom: 0 }}>
+                Usada nos cards do Dashboard e em outros lugares do sistema. A imagem é comprimida
+                automaticamente.
+              </p>
+            </div>
+          </div>
+
           <div style={{ display: 'flex', gap: 10 }}>
             <button style={ui.primaryButton} onClick={salvar} disabled={salvando}>
               {salvando ? 'Salvando...' : 'Salvar'}
@@ -334,7 +384,12 @@ export default function ClientesCadastro({ permissoes }) {
             <tbody>
               {clientes.map((c) => (
                 <tr key={c.id}>
-                  <td style={ui.td}>{c.nome}</td>
+                  <td style={ui.td}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {c.logoBase64 && <img src={c.logoBase64} alt="" style={styles.logoThumb} />}
+                      {c.nome}
+                    </div>
+                  </td>
                   <td style={ui.td}>{enderecoResumo(c)}</td>
                   <td style={ui.td}>
                     {c.geoLat != null ? (
@@ -422,5 +477,14 @@ const styles = {
     textAlign: 'center',
     boxShadow: '0 4px 24px rgba(0,0,0,0.25)'
   },
-  qrImg: { width: '100%', maxWidth: 280, height: 'auto' }
+  qrImg: { width: '100%', maxWidth: 280, height: 'auto' },
+  logoPreview: {
+    width: 64,
+    height: 64,
+    objectFit: 'contain',
+    borderRadius: 8,
+    border: '1px solid #E5E5E5',
+    background: '#FAFAFA'
+  },
+  logoThumb: { width: 28, height: 28, objectFit: 'contain', borderRadius: 4, background: '#FAFAFA' }
 };

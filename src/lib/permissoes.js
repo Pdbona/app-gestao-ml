@@ -79,3 +79,30 @@ export function mergePermissoes(base, overrides) {
 export function temPermissaoCadastro(permissoes, secao, acao) {
   return Boolean(permissoes?.cadastros?.[secao]?.[acao]);
 }
+
+// Monta a árvore de navegação de 1º nível de Cadastros a partir das seções
+// visíveis pro usuário: seções soltas (sem `grupo`) viram um item; seções
+// com o mesmo `grupo` (ex: Tipo de Operação + Operação) viram um único item
+// de grupo. Compartilhado entre a sidebar (GestaoML) e a tela de Cadastros.
+export function montarNavegacaoCadastros(permissoes) {
+  const secoesVisiveis = SECOES_CADASTRO.filter((s) => permissoes?.cadastros?.[s.id]?.visualizar);
+  const nivel1 = [];
+  const gruposVistos = new Set();
+
+  secoesVisiveis.forEach((s) => {
+    if (!s.grupo) {
+      nivel1.push({ tipo: 'secao', id: s.id, label: s.label, secao: s });
+      return;
+    }
+    if (gruposVistos.has(s.grupo)) return;
+    gruposVistos.add(s.grupo);
+    nivel1.push({
+      tipo: 'grupo',
+      id: s.grupo,
+      label: GRUPOS_CADASTRO[s.grupo]?.label || s.grupo,
+      secoes: secoesVisiveis.filter((x) => x.grupo === s.grupo)
+    });
+  });
+
+  return nivel1;
+}

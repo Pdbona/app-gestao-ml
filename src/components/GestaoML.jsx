@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
-import { PERFIL_ADMIN_PADRAO, mergePermissoes } from '../lib/permissoes';
+import { PERFIL_ADMIN_PADRAO, mergePermissoes, montarNavegacaoCadastros } from '../lib/permissoes';
 import { NAVY, NAVY_LIGHT, ORANGE, ui } from '../lib/styles';
 import DashboardTab from './DashboardTab';
 import CadastrosScreen from './cadastros/CadastrosScreen';
@@ -18,7 +18,6 @@ const LOGO_SBS = `${process.env.PUBLIC_URL}/logos/logo-sbs.png`;
 // primeiro usuário/perfil reais em Cadastros → Usuários. Uso interno, sem
 // Firebase Auth ainda (ver nota em UsuariosCadastro.jsx sobre senha em
 // texto simples). Trocar/desativar quando não for mais necessária.
-const BOOTSTRAP_NOME = 'admin';
 const BOOTSTRAP_SENHA = '130399';
 
 // Sem projeto Firebase real (config fictícia em src/firebase.js), o SDK do
@@ -44,16 +43,14 @@ async function buscarPerfil(perfilId) {
   return PERFIL_ADMIN_PADRAO;
 }
 
-async function autenticar(nomeDigitado, senhaDigitada) {
+// Login só por senha (sem campo de usuário): a senha sozinha identifica a
+// conta e já carrega direto o perfil/permissões dela — por isso a senha
+// precisa ser única entre usuários ativos (validado em UsuariosCadastro).
+async function autenticar(senhaDigitada) {
   try {
     const snap = await comTimeout(getDocs(collection(db, 'usuarios')));
     const usuarios = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const encontrado = usuarios.find(
-      (u) =>
-        u.ativo !== false &&
-        (u.nome || '').toLowerCase() === nomeDigitado.toLowerCase() &&
-        u.senha === senhaDigitada
-    );
+    const encontrado = usuarios.find((u) => u.ativo !== false && u.senha === senhaDigitada);
     if (encontrado) {
       const perfilBase = await buscarPerfil(encontrado.perfilId);
       return {
@@ -67,7 +64,7 @@ async function autenticar(nomeDigitado, senhaDigitada) {
     // Sem projeto Firebase real ainda, ou sem conexão — segue pro bootstrap.
   }
 
-  if (nomeDigitado.toLowerCase() === BOOTSTRAP_NOME && senhaDigitada === BOOTSTRAP_SENHA) {
+  if (senhaDigitada === BOOTSTRAP_SENHA) {
     return {
       uid: 'bootstrap-admin',
       nome: PERFIL_ADMIN_PADRAO.nome,
@@ -83,24 +80,23 @@ async function autenticar(nomeDigitado, senhaDigitada) {
 // TELA DE LOGIN
 // ============================================================
 function LoginScreen({ onLoginSuccess }) {
-  const [nome, setNome] = useState('');
   const [senha, setSenha] = useState('');
   const [entrando, setEntrando] = useState(false);
   const [erro, setErro] = useState('');
 
   const handleLogin = async () => {
-    if (!nome.trim() || !senha.trim()) {
-      setErro('Informe usuário e senha.');
+    if (!senha.trim()) {
+      setErro('Informe a senha.');
       return;
     }
     setEntrando(true);
     setErro('');
-    const usuario = await autenticar(nome.trim(), senha);
+    const usuario = await autenticar(senha);
     setEntrando(false);
     if (usuario) {
       onLoginSuccess(usuario);
     } else {
-      setErro('Usuário ou senha inválidos.');
+      setErro('Senha inválida.');
     }
   };
 
@@ -120,20 +116,11 @@ function LoginScreen({ onLoginSuccess }) {
         <div style={styles.loginCard}>
           <h2 style={styles.loginCardTitle}>Acesso ao sistema</h2>
 
-          <label style={{ ...ui.label, marginBottom: 14 }}>
-            Usuário
-            <input
-              style={ui.input}
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-            />
-          </label>
-
           <label style={{ ...ui.label, marginBottom: 18 }}>
             Senha
             <input
               type="password"
+              autoFocus
               style={ui.input}
               value={senha}
               onChange={(e) => setSenha(e.target.value)}
@@ -158,28 +145,40 @@ function LoginScreen({ onLoginSuccess }) {
 export default function GestaoML() {
   const [usuarioAtivo, setUsuarioAtivo] = useState(null);
   const [abaAtual, setAbaAtual] = useState('dashboard');
+  const [cadastrosExpandido, setCadastrosExpandido] = useState(true);
+  const [secaoCadastroAtual, setSecaoCadastroAtual] = useState(null);
 
   if (!usuarioAtivo) {
     return <LoginScreen onLoginSuccess={setUsuarioAtivo} />;
   }
 
   const permissoes = usuarioAtivo.permissoes;
-  const abas = [
-    permissoes.abas?.dashboard && { id: 'dashboard', label: '📊 Dashboard' },
-    permissoes.abas?.cadastros && { id: 'cadastros', label: '🗂️ Cadastros' }
-  ].filter(Boolean);
+  const temDashboard = Boolean(permissoes.abas?.dashboard);
+  const temCadastros = Boolean(permissoes.abas?.cadastros);
+  const navCadastros = temCadastros ? montarNavegacaoCadastros(permissoes) : [];
+  const secaoAtual = navCadastros.find((n) => n.id === secaoCadastroAtual) || navCadastros[0];
+
+  const abrirCadastros = () => {
+    setAbaAtual('cadastros');
+    setCadastrosExpandido(true);
+  };
+
+  const abrirSecaoCadastro = (id) => {
+    setAbaAtual('cadastros');
+    setCadastrosExpandido(true);
+    setSecaoCadastroAtual(id);
+  };
 
   return (
     <div style={styles.appShell}>
       <div style={styles.appHeader}>
-        <div style={styles.appHeaderSide} />
-        <div style={styles.appHeaderCenter}>
+        <div style={styles.appHeaderBrand}>
           <div style={styles.logoChipSmall}>
             <img src={LOGO_ML} alt="ML Serviços" style={styles.logoMlApp} />
           </div>
           <p style={styles.appSubtitle}>Sistema de Gestão</p>
         </div>
-        <div style={{ ...styles.appHeaderSide, ...styles.userBox }}>
+        <div style={styles.userBox}>
           <span>{usuarioAtivo.nome}</span>
           <button style={styles.logoutButton} onClick={() => setUsuarioAtivo(null)}>
             Sair
@@ -190,20 +189,53 @@ export default function GestaoML() {
 
       <div style={styles.bodyRow}>
         <nav style={styles.sidebar}>
-          {abas.map((aba) => (
+          {temDashboard && (
             <button
-              key={aba.id}
-              onClick={() => setAbaAtual(aba.id)}
-              style={{ ...styles.sidebarButton, ...(abaAtual === aba.id ? styles.sidebarButtonAtivo : {}) }}
+              onClick={() => setAbaAtual('dashboard')}
+              style={{ ...styles.sidebarButton, ...(abaAtual === 'dashboard' ? styles.sidebarButtonAtivo : {}) }}
             >
-              {aba.label}
+              📊 Dashboard
             </button>
-          ))}
+          )}
+
+          {temCadastros && (
+            <>
+              <button
+                onClick={abrirCadastros}
+                style={{
+                  ...styles.sidebarButton,
+                  ...(abaAtual === 'cadastros' ? styles.sidebarButtonAtivo : {})
+                }}
+              >
+                🗂️ Cadastros
+              </button>
+              {cadastrosExpandido && (
+                <div style={styles.sidebarSubGroup}>
+                  {navCadastros.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => abrirSecaoCadastro(item.id)}
+                      style={{
+                        ...styles.sidebarSubButton,
+                        ...(abaAtual === 'cadastros' && secaoAtual?.id === item.id
+                          ? styles.sidebarSubButtonAtivo
+                          : {})
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </nav>
 
         <div style={styles.content}>
-          {abaAtual === 'dashboard' && permissoes.abas?.dashboard && <DashboardTab />}
-          {abaAtual === 'cadastros' && permissoes.abas?.cadastros && <CadastrosScreen permissoes={permissoes} />}
+          {abaAtual === 'dashboard' && temDashboard && <DashboardTab />}
+          {abaAtual === 'cadastros' && temCadastros && (
+            <CadastrosScreen permissoes={permissoes} secaoAtualId={secaoAtual?.id} />
+          )}
         </div>
       </div>
 
@@ -268,23 +300,22 @@ const styles = {
   appHeader: {
     background: `linear-gradient(135deg, ${NAVY}, ${NAVY_LIGHT})`,
     color: '#FFF',
-    padding: '20px 24px',
+    padding: '26px 28px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 16
   },
-  appHeaderSide: { flex: '1 1 0', minWidth: 100, display: 'flex', justifyContent: 'flex-end' },
-  appHeaderCenter: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 },
+  appHeaderBrand: { display: 'flex', alignItems: 'center', gap: 18 },
   logoChipSmall: {
     display: 'inline-flex',
     background: '#FFF',
-    borderRadius: 10,
-    padding: '8px 20px',
+    borderRadius: 12,
+    padding: '10px 22px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
   },
-  logoMlApp: { height: 44, width: 'auto', display: 'block' },
-  appSubtitle: { margin: 0, fontSize: 15, fontWeight: 600, letterSpacing: 0.5, opacity: 0.9 },
+  logoMlApp: { height: 64, width: 'auto', display: 'block' },
+  appSubtitle: { margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: 0.5, opacity: 0.9 },
   userBox: { display: 'flex', alignItems: 'center', gap: 12, fontSize: 14 },
   logoutButton: {
     padding: '6px 14px',
@@ -297,14 +328,14 @@ const styles = {
 
   bodyRow: { display: 'flex', flex: 1, alignItems: 'stretch' },
   sidebar: {
-    width: 200,
+    width: 210,
     flexShrink: 0,
     background: '#FFF',
     borderRight: '1px solid #E5E5E5',
     padding: '20px 12px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 6
+    gap: 4
   },
   sidebarButton: {
     textAlign: 'left',
@@ -318,12 +349,25 @@ const styles = {
     fontSize: 14
   },
   sidebarButtonAtivo: { background: NAVY, color: '#FFF' },
+  sidebarSubGroup: { display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 },
+  sidebarSubButton: {
+    textAlign: 'left',
+    padding: '9px 16px 9px 30px',
+    background: 'transparent',
+    color: '#555',
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontWeight: 500,
+    fontSize: 13
+  },
+  sidebarSubButtonAtivo: { background: '#E5EDF7', color: NAVY, fontWeight: 700 },
 
   content: { flex: 1, padding: '24px 28px 60px', minWidth: 0 },
 
   footer: { background: NAVY, color: '#FFF', padding: '18px 20px' },
   footerOrangeBar: { height: 4, background: ORANGE, margin: '-18px -20px 16px' },
-  footerRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' },
+  footerRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12, paddingLeft: 12 },
   footerSbsChip: {
     display: 'inline-flex',
     background: '#FFF',

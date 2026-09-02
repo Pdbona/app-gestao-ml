@@ -96,11 +96,20 @@ export default function UsuariosCadastro({ permissoes }) {
 
   const salvar = async () => {
     if (!form.nome.trim()) {
-      setErro('Informe o nome de usuário (login).');
+      setErro('Informe o nome do usuário.');
       return;
     }
     if (!form.senha.trim()) {
       setErro('Informe a senha.');
+      return;
+    }
+    // O login agora é só por senha (sem digitar o nome) — precisa ser única
+    // entre usuários ativos, senão o sistema não sabe qual conta é qual.
+    const colisao = usuarios.some(
+      (u) => u.id !== editandoId && u.ativo !== false && u.senha === form.senha
+    );
+    if (colisao) {
+      setErro('Essa senha já está em uso por outro usuário ativo. O login é só por senha, então cada uma precisa ser única.');
       return;
     }
     setSalvando(true);
@@ -147,8 +156,10 @@ export default function UsuariosCadastro({ permissoes }) {
       </div>
 
       <p style={ui.placeholderNote}>
-        Login por usuário/senha alfanumérica (sem Firebase Auth ainda — ver nota no código). O
-        bootstrap <strong>admin / 130399</strong> continua disponível como acesso de emergência.
+        Login só por senha (sem digitar usuário) — ao entrar, o sistema já leva pra tela que o
+        perfil permite. Por isso cada senha precisa ser única entre usuários ativos (sem Firebase
+        Auth ainda — ver nota no código). O bootstrap <strong>130399</strong> continua disponível
+        como acesso de emergência.
       </p>
 
       {erro && <div style={ui.erro}>❌ {erro}</div>}
@@ -159,7 +170,7 @@ export default function UsuariosCadastro({ permissoes }) {
 
           <div style={ui.formGrid}>
             <label style={ui.label}>
-              Nome (login) *
+              Nome *
               <input style={ui.input} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
             </label>
             <label style={ui.label}>
@@ -226,7 +237,7 @@ export default function UsuariosCadastro({ permissoes }) {
       {carregando ? (
         <p>Carregando usuários...</p>
       ) : usuarios.length === 0 ? (
-        <p style={ui.placeholderNote}>Nenhum usuário cadastrado ainda (o acesso de emergência admin/130399 continua valendo).</p>
+        <p style={ui.placeholderNote}>Nenhum usuário cadastrado ainda (o acesso de emergência com a senha 130399 continua valendo).</p>
       ) : (
         <div style={ui.tableWrapper}>
           <table style={ui.table}>

@@ -15,21 +15,27 @@ Estrutura e padrões seguem a skill `sbs-webapp` do workspace SBS Solution.
 
 ## Estado atual
 
-- ✅ Login por usuário/senha (Firestore `usuarios`) + acesso de emergência
-  **`admin` / `130399`** (sempre disponível, mesmo com Firestore vazio —
-  ver `src/components/GestaoML.jsx`)
+- ✅ Login **só por senha** (sem digitar usuário — a senha sozinha identifica
+  a conta e já leva pra tela que o perfil permite; por isso precisa ser
+  única entre usuários ativos) + acesso de emergência **`130399`** (sempre
+  disponível, mesmo com Firestore vazio — ver `src/components/GestaoML.jsx`)
 - ✅ RBAC completo: perfis com permissões por aba/ação, e permissões
   personalizadas por usuário sobrepondo o perfil
-- ✅ Layout: cabeçalho centralizado (logo ML em destaque) + navegação
-  principal (Dashboard/Cadastros) na lateral esquerda
+- ✅ Layout: cabeçalho maior com a logo ML no canto esquerdo + navegação
+  principal em árvore na sidebar esquerda (Dashboard, Cadastros com os
+  sub-itens já expandidos abaixo)
 - ✅ Aba **Dashboard** (default ao entrar — placeholder com contadores, os
   gráficos de operação entram quando definirmos o que precisa aparecer)
 - ✅ Aba **Cadastros**, com 4 itens (Cliente/Perfil/Usuários soltos, Operação
   agrupando duas sub-telas):
-  - **Cliente** — cadastro completo (criar/editar/excluir)
+  - **Cliente** — só Nome + Local (CEP → busca automática de
+    logradouro/bairro/cidade/UF via ViaCEP, número manual, e captura de
+    geolocalização real via GPS do navegador — o mesmo cliente pode ter
+    vários locais/obras, cada um com sua própria geolocalização, já que o
+    endereço do CEP sozinho não garante o ponto exato do serviço)
   - **Perfil** — perfil "Administrador" fixo + perfis personalizados, com
     matriz de permissões (abas + ações por seção de Cadastros)
-  - **Usuários** — nome/senha alfanumérica, vínculo a um perfil, e
+  - **Usuários** — nome + senha alfanumérica única, vínculo a um perfil, e
     permissões customizadas opcionais por usuário
   - **Operação** (grupo, ver `src/components/cadastros/CadastrosScreen.jsx`):
     - **Tipo de Operação** — meta de tempo por tipo + motor de calibragem

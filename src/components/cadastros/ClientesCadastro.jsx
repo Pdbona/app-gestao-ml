@@ -15,13 +15,51 @@ import { ui } from '../../lib/styles';
 
 const CLIENTE_VAZIO = {
   nome: '',
-  cnpj: '',
-  contato: '',
-  email: '',
-  telefone: '',
+  cep: '',
+  logradouro: '',
+  bairro: '',
+  cidade: '',
+  uf: '',
+  numero: '',
   status: 'ativo',
-  observacoes: ''
+  geoLat: null,
+  geoLng: null,
+  geoCapturadoEm: null
 };
+
+// CEP só dá o endereço "geral" (rua/bairro/cidade) — não a coordenada exata.
+// Como a ML atende o mesmo cliente em locais diferentes (às vezes até no
+// mesmo CEP, mas o trabalho acontece em outro ponto), a geolocalização
+// precisa ser capturada de verdade no local (GPS do navegador de quem está
+// cadastrando), não deduzida só do CEP.
+async function buscarEnderecoPorCep(cepDigitado) {
+  const cepLimpo = cepDigitado.replace(/\D/g, '');
+  if (cepLimpo.length !== 8) return null;
+  const resp = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  if (data.erro) return null;
+  return {
+    logradouro: data.logradouro || '',
+    bairro: data.bairro || '',
+    cidade: data.localidade || '',
+    uf: data.uf || ''
+  };
+}
+
+function capturarGeolocalizacao() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocalização não é suportada neste navegador.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => reject(err),
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  });
+}
 
 export default function ClientesCadastro({ permissoes }) {
   const perm = permissoes.cadastros?.clientes || {};
@@ -32,6 +70,8 @@ export default function ClientesCadastro({ permissoes }) {
   const [editandoId, setEditandoId] = useState(null);
   const [form, setForm] = useState(CLIENTE_VAZIO);
   const [salvando, setSalvando] = useState(false);
+  const [buscandoCep, setBuscandoCep] = useState(false);
+  const [capturandoGeo, setCapturandoGeo] = useState(false);
   const [erro, setErro] = useState('');
 
   useEffect(() => {
@@ -57,12 +97,16 @@ export default function ClientesCadastro({ permissoes }) {
   const abrirEdicao = (cliente) => {
     setForm({
       nome: cliente.nome || '',
-      cnpj: cliente.cnpj || '',
-      contato: cliente.contato || '',
-      email: cliente.email || '',
-      telefone: cliente.telefone || '',
+      cep: cliente.cep || '',
+      logradouro: cliente.logradouro || '',
+      bairro: cliente.bairro || '',
+      cidade: cliente.cidade || '',
+      uf: cliente.uf || '',
+      numero: cliente.numero || '',
       status: cliente.status || 'ativo',
-      observacoes: cliente.observacoes || ''
+      geoLat: cliente.geoLat ?? null,
+      geoLng: cliente.geoLng ?? null,
+      geoCapturadoEm: cliente.geoCapturadoEm ?? null
     });
     setEditandoId(cliente.id);
     setFormAberto(true);
@@ -76,17 +120,45 @@ export default function ClientesCadastro({ permissoes }) {
     setErro('');
   };
 
+  const handleCepBlur = async () => {
+    if (!form.cep.trim()) return;
+    setBuscandoCep(true);
+    setErro('');
+    try {
+      const endereco = await buscarEnderecoPorCep(form.cep);
+      if (endereco) {
+        setForm((f) => ({ ...f, ...endereco }));
+      } else {
+        setErro('CEP não encontrado — confira o número ou preencha o endereço manualmente.');
+      }
+    } catch (e) {
+      setErro('Falha ao buscar o CEP. Preencha o endereço manualmente.');
+    } finally {
+      setBuscandoCep(false);
+    }
+  };
+
+  const handleCapturarGeo = async () => {
+    setCapturandoGeo(true);
+    setErro('');
+    try {
+      const { lat, lng } = await capturarGeolocalizacao();
+      setForm((f) => ({ ...f, geoLat: lat, geoLng: lng, geoCapturadoEm: new Date().toISOString() }));
+    } catch (e) {
+      setErro('Não foi possível capturar a localização. Verifique a permissão de localização do navegador.');
+    } finally {
+      setCapturandoGeo(false);
+    }
+  };
+
   const salvar = async () => {
     if (!form.nome.trim()) {
-      setErro('Informe o nome/razão social do cliente.');
+      setErro('Informe o nome do cliente.');
       return;
     }
     setSalvando(true);
     setErro('');
     try {
-      // NOTA: quando o cliente tiver perfil próprio de acesso (login
-      // restrito aos seus próprios dados), este id de cliente é o que deve
-      // ser vinculado ao usuário logado para filtrar demandas/registros.
       if (editandoId) {
         await updateDoc(doc(db, 'clientes', editandoId), { ...form, atualizadoEm: serverTimestamp() });
       } else {
@@ -109,6 +181,12 @@ export default function ClientesCadastro({ permissoes }) {
     }
   };
 
+  const enderecoResumo = (c) => {
+    const partes = [c.logradouro, c.numero].filter(Boolean).join(', ');
+    const cidadeUf = [c.cidade, c.uf].filter(Boolean).join('/');
+    return [partes, c.bairro, cidadeUf].filter(Boolean).join(' — ') || '-';
+  };
+
   return (
     <div>
       <div style={ui.sectionHeaderRow}>
@@ -125,27 +203,15 @@ export default function ClientesCadastro({ permissoes }) {
       {formAberto && (
         <div style={ui.formCard}>
           <h3 style={{ marginTop: 0 }}>{editandoId ? 'Editar cliente' : 'Novo cliente'}</h3>
+          <p style={ui.placeholderNote}>
+            A ML atende o mesmo cliente em locais diferentes — se for outro endereço/obra, cadastre
+            um novo registro (mesmo nome, local diferente).
+          </p>
 
           <div style={ui.formGrid}>
             <label style={ui.label}>
-              Nome / Razão social *
+              Nome do Cliente *
               <input style={ui.input} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
-            </label>
-            <label style={ui.label}>
-              CNPJ
-              <input style={ui.input} value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} />
-            </label>
-            <label style={ui.label}>
-              Contato (nome)
-              <input style={ui.input} value={form.contato} onChange={(e) => setForm({ ...form, contato: e.target.value })} />
-            </label>
-            <label style={ui.label}>
-              E-mail
-              <input style={ui.input} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            </label>
-            <label style={ui.label}>
-              Telefone
-              <input style={ui.input} value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
             </label>
             <label style={ui.label}>
               Status
@@ -156,16 +222,57 @@ export default function ClientesCadastro({ permissoes }) {
             </label>
           </div>
 
-          <label style={ui.label}>
-            Observações
-            <textarea
-              style={{ ...ui.input, minHeight: 70 }}
-              value={form.observacoes}
-              onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
-            />
-          </label>
+          <h4 style={{ marginBottom: 8, color: '#1E3A5F' }}>Local</h4>
+          <div style={ui.formGrid}>
+            <label style={ui.label}>
+              CEP
+              <input
+                style={ui.input}
+                value={form.cep}
+                onChange={(e) => setForm({ ...form, cep: e.target.value })}
+                onBlur={handleCepBlur}
+                placeholder="00000-000"
+              />
+            </label>
+            <label style={ui.label}>
+              Número
+              <input style={ui.input} value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} />
+            </label>
+            <label style={ui.label}>
+              Logradouro
+              <input
+                style={ui.input}
+                value={form.logradouro}
+                onChange={(e) => setForm({ ...form, logradouro: e.target.value })}
+              />
+            </label>
+            <label style={ui.label}>
+              Bairro
+              <input style={ui.input} value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} />
+            </label>
+            <label style={ui.label}>
+              Cidade
+              <input style={ui.input} value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
+            </label>
+            <label style={ui.label}>
+              UF
+              <input style={ui.input} value={form.uf} onChange={(e) => setForm({ ...form, uf: e.target.value })} maxLength={2} />
+            </label>
+          </div>
+          {buscandoCep && <p style={ui.placeholderNote}>Buscando endereço pelo CEP...</p>}
 
-          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+          <div style={{ marginTop: 6, marginBottom: 16 }}>
+            <button type="button" style={ui.secondaryButton} onClick={handleCapturarGeo} disabled={capturandoGeo}>
+              {capturandoGeo ? 'Capturando...' : '📍 Capturar localização atual'}
+            </button>
+            {form.geoLat != null && form.geoLng != null && (
+              <span style={{ marginLeft: 12, fontSize: 13, color: '#1E7A34' }}>
+                ✅ Localização capturada ({form.geoLat.toFixed(5)}, {form.geoLng.toFixed(5)})
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
             <button style={ui.primaryButton} onClick={salvar} disabled={salvando}>
               {salvando ? 'Salvando...' : 'Salvar'}
             </button>
@@ -185,9 +292,9 @@ export default function ClientesCadastro({ permissoes }) {
           <table style={ui.table}>
             <thead>
               <tr>
-                <th style={ui.th}>Nome / Razão social</th>
-                <th style={ui.th}>CNPJ</th>
-                <th style={ui.th}>Contato</th>
+                <th style={ui.th}>Nome do Cliente</th>
+                <th style={ui.th}>Local</th>
+                <th style={ui.th}>Geolocalização</th>
                 <th style={ui.th}>Status</th>
                 <th style={ui.th}>Ações</th>
               </tr>
@@ -196,10 +303,13 @@ export default function ClientesCadastro({ permissoes }) {
               {clientes.map((c) => (
                 <tr key={c.id}>
                   <td style={ui.td}>{c.nome}</td>
-                  <td style={ui.td}>{c.cnpj || '-'}</td>
+                  <td style={ui.td}>{enderecoResumo(c)}</td>
                   <td style={ui.td}>
-                    {c.contato || '-'}
-                    {c.email ? ` · ${c.email}` : ''}
+                    {c.geoLat != null ? (
+                      <span style={{ ...ui.badge, ...ui.badgeVerde }}>Capturada</span>
+                    ) : (
+                      <span style={{ ...ui.badge, ...ui.badgeCinza }}>Pendente</span>
+                    )}
                   </td>
                   <td style={ui.td}>
                     <span style={{ ...ui.badge, ...(c.status === 'ativo' ? ui.badgeVerde : ui.badgeCinza) }}>

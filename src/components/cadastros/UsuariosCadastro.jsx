@@ -148,7 +148,7 @@ export default function UsuariosCadastro({ permissoes }) {
 
       <p style={ui.placeholderNote}>
         Login por usuário/senha alfanumérica (sem Firebase Auth ainda — ver nota no código). O
-        bootstrap <strong>admin / admin9999</strong> continua disponível como acesso de emergência.
+        bootstrap <strong>admin / 130399</strong> continua disponível como acesso de emergência.
       </p>
 
       {erro && <div style={ui.erro}>❌ {erro}</div>}
@@ -226,7 +226,7 @@ export default function UsuariosCadastro({ permissoes }) {
       {carregando ? (
         <p>Carregando usuários...</p>
       ) : usuarios.length === 0 ? (
-        <p style={ui.placeholderNote}>Nenhum usuário cadastrado ainda (o acesso de emergência admin/admin9999 continua valendo).</p>
+        <p style={ui.placeholderNote}>Nenhum usuário cadastrado ainda (o acesso de emergência admin/130399 continua valendo).</p>
       ) : (
         <div style={ui.tableWrapper}>
           <table style={ui.table}>

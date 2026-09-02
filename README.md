@@ -16,7 +16,7 @@ Estrutura e padrões seguem a skill `sbs-webapp` do workspace SBS Solution.
 ## Estado atual
 
 - ✅ Login por usuário/senha (Firestore `usuarios`) + acesso de emergência
-  **`admin` / `admin9999`** (sempre disponível, mesmo com Firestore vazio —
+  **`admin` / `130399`** (sempre disponível, mesmo com Firestore vazio —
   ver `src/components/GestaoML.jsx`)
 - ✅ RBAC completo: perfis com permissões por aba/ação, e permissões
   personalizadas por usuário sobrepondo o perfil

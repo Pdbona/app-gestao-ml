@@ -19,7 +19,7 @@ const LOGO_SBS = `${process.env.PUBLIC_URL}/logos/logo-sbs.png`;
 // Firebase Auth ainda (ver nota em UsuariosCadastro.jsx sobre senha em
 // texto simples). Trocar/desativar quando não for mais necessária.
 const BOOTSTRAP_NOME = 'admin';
-const BOOTSTRAP_SENHA = 'admin9999';
+const BOOTSTRAP_SENHA = '130399';
 
 // Sem projeto Firebase real (config fictícia em src/firebase.js), o SDK do
 // Firestore não rejeita rápido — ele fica tentando resolver o host

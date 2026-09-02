@@ -180,14 +180,36 @@ export default function GestaoML() {
 
   return (
     <div style={styles.appShell}>
-      <div style={styles.appHeader}>
+      {/* Regras de responsividade não dão pra fazer só com style inline —
+          o perfil de Operação (Coletor) normalmente é usado no celular, e a
+          sidebar fixa de 210px sozinha já não sobra espaço útil numa tela
+          de ~360px. */}
+      <style>{`
+        @media (max-width: 640px) {
+          .app-header { padding: 16px !important; }
+          .app-title { font-size: 20px !important; }
+          .app-logo { height: 40px !important; }
+          .app-body-row { flex-direction: column; }
+          .app-sidebar {
+            width: 100% !important;
+            flex-direction: row !important;
+            overflow-x: auto;
+            border-right: none !important;
+            border-bottom: 1px solid #E5E5E5;
+            padding: 8px !important;
+          }
+          .app-sidebar-sub { flex-direction: row !important; flex-wrap: wrap; }
+          .app-content { padding: 16px !important; }
+        }
+      `}</style>
+      <div style={styles.appHeader} className="app-header">
         <div style={styles.appHeaderLeft}>
           <div style={styles.logoChipSmall}>
-            <img src={LOGO_ML} alt="ML Serviços" style={styles.logoMlApp} />
+            <img src={LOGO_ML} alt="ML Serviços" style={styles.logoMlApp} className="app-logo" />
           </div>
         </div>
         <div style={styles.appHeaderCenter}>
-          <p style={styles.appSubtitle}>Sistema de Gestão Operacional</p>
+          <p style={styles.appSubtitle} className="app-title">Sistema de Gestão Operacional</p>
         </div>
         <div style={{ ...styles.appHeaderRight, ...styles.userBox }}>
           <span>{usuarioAtivo.nome}</span>
@@ -198,8 +220,8 @@ export default function GestaoML() {
       </div>
       <div style={styles.orangeBar} />
 
-      <div style={styles.bodyRow}>
-        <nav style={styles.sidebar}>
+      <div style={styles.bodyRow} className="app-body-row">
+        <nav style={styles.sidebar} className="app-sidebar">
           {temDashboard && (
             <button
               onClick={() => setAbaAtual('dashboard')}
@@ -221,7 +243,7 @@ export default function GestaoML() {
                 🗂️ Cadastros
               </button>
               {cadastrosExpandido && (
-                <div style={styles.sidebarSubGroup}>
+                <div style={styles.sidebarSubGroup} className="app-sidebar-sub">
                   {navCadastros.map((item) => (
                     <button
                       key={item.id}
@@ -251,7 +273,7 @@ export default function GestaoML() {
           )}
         </nav>
 
-        <div style={styles.content}>
+        <div style={styles.content} className="app-content">
           {abaAtual === 'dashboard' && temDashboard && <DashboardTab />}
           {abaAtual === 'cadastros' && temCadastros && (
             <CadastrosScreen permissoes={permissoes} secaoAtualId={secaoAtual?.id} />

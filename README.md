@@ -46,13 +46,24 @@ Estrutura e padrões seguem a skill `sbs-webapp` do workspace SBS Solution.
     - **Operação** (Recebimento/Expedição/Separação/Outros, card compacto)
       — qtd. de fotos obrigatórias no início e no fim de cada uma (0 = não
       obrigatório)
-- ✅ Aba **Coletor** (`src/components/ColetorScreen.jsx`) — quem está no
-  campo escolhe a Operação + o Tipo de Operação, tira as fotos exigidas,
-  inicia e depois finaliza; o tempo real vira registro pra calibragem.
+- ✅ Aba **Coletor** (`src/components/ColetorScreen.jsx`) — layout mobile-first
+  (sidebar vira barra horizontal em telas ≤640px, campos grandes, um por
+  linha). Pra iniciar uma operação, o Operador preenche, TODOS
+  obrigatórios: Tipo de Operação, Operação/fluxo (Recebimento/Expedição/
+  Separação/Outros), Documento do processo (NF/Conhecimento/Pedido), Qtd.
+  de volumes, Qtd. de MdO, e as fotos de início exigidas pelo fluxo
+  escolhido (0 = nenhuma) — o botão "Iniciar operação" só destrava quando
+  tudo isso estiver completo. Fotos são tiradas na hora pela câmera
+  (`capture="environment"`, sem opção de galeria), com preview local
+  imediato. Enquanto ativa, mostra cronômetro ao vivo; pra finalizar exige
+  as fotos de fim (conforme fluxo) + campo de observação opcional, grava
+  data/hora do fim e calcula o tempo real pra calibragem. Só o mesmo
+  usuário que iniciou enxerga a própria operação ativa pra finalizá-la.
   Perfil "exclusivo" de Coletor (só essa aba habilitada) já cai direto
   nessa tela ao logar, sem passar pelo Dashboard (`abaInicial()` em
   `src/lib/permissoes.js`). ⚠️ Fotos ainda não são enviadas/guardadas de
-  verdade (falta configurar o Firebase Storage) — só a contagem é validada.
+  verdade (falta configurar o Firebase Storage) — só a contagem/preview
+  local é validada.
 - ✅ **Projeto Firebase real criado e configurado** — `app-gestao-ml`
   (Firestore em `southamerica-east1`/São Paulo, regras publicadas, config
   real em `src/firebase.js`)

@@ -3,8 +3,6 @@ import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { NAVY, ORANGE } from '../lib/styles';
 
-const DOCUMENTOS_PROCESSO = ['NF', 'Conhecimento', 'Pedido'];
-
 // Slot de uma foto obrigatória: tira na hora (câmera do celular, sem opção
 // de galeria — `capture="environment"`) e mostra um preview local (blob URL
 // só nesta sessão). Tocar de novo no preview deixa retirar a foto.
@@ -143,7 +141,7 @@ export default function ColetorScreen({ usuario }) {
   const podeIniciar =
     Boolean(fluxoId) &&
     Boolean(tipoId) &&
-    Boolean(documentoProcesso) &&
+    Boolean(documentoProcesso.trim()) &&
     Number(qtdVolumes) > 0 &&
     Number(qtdMdo) > 0 &&
     fotosInicioOk;
@@ -173,7 +171,7 @@ export default function ColetorScreen({ usuario }) {
       await addDoc(collection(db, 'registrosOperacao'), {
         fluxoId,
         tipoOperacaoId: tipoId,
-        documentoProcesso,
+        documentoProcesso: documentoProcesso.trim(),
         qtdVolumes: Number(qtdVolumes),
         qtdMdo: Number(qtdMdo),
         usuarioId: usuario.uid,
@@ -216,6 +214,10 @@ export default function ColetorScreen({ usuario }) {
     }
   };
 
+  // TODO: funcionalidade de pausa ainda a ser definida com o Pablo — por
+  // enquanto o botão é só o placeholder visual.
+  const pausar = () => {};
+
   if (carregando) {
     return <p>Carregando...</p>;
   }
@@ -249,6 +251,10 @@ export default function ColetorScreen({ usuario }) {
             {operacaoAtiva.qtdMdo != null && <span style={styles.tag}>{operacaoAtiva.qtdMdo} MdO</span>}
           </div>
           <p style={styles.emAndamento}>🟢 Operação em andamento</p>
+
+          <button type="button" style={styles.botaoPausar} onClick={pausar}>
+            ⏸ Pausar
+          </button>
 
           <GradeFotos
             quantidade={fluxoDaAtiva?.fotosFim || 0}
@@ -316,14 +322,14 @@ export default function ColetorScreen({ usuario }) {
 
         <label style={styles.rotulo}>
           Documento do processo *
-          <select style={styles.input} value={documentoProcesso} onChange={(e) => setDocumentoProcesso(e.target.value)}>
-            <option value="">Selecione...</option>
-            {DOCUMENTOS_PROCESSO.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
+          <input
+            type="text"
+            inputMode="numeric"
+            style={styles.input}
+            value={documentoProcesso}
+            onChange={(e) => setDocumentoProcesso(e.target.value)}
+            placeholder="Nº do documento"
+          />
         </label>
 
         <div style={styles.duasColunas}>
@@ -455,6 +461,18 @@ const styles = {
   },
   botaoIniciar: { background: ORANGE, color: '#FFF' },
   botaoFinalizar: { background: NAVY, color: '#FFF' },
+  botaoPausar: {
+    width: '100%',
+    padding: 12,
+    border: `1px solid ${NAVY}`,
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontWeight: 700,
+    fontSize: 15,
+    marginBottom: 18,
+    background: '#FFF',
+    color: NAVY
+  },
   botaoDesabilitado: { background: '#CCC', color: '#888', cursor: 'not-allowed' },
   dicaBotao: { textAlign: 'center', fontSize: 12, color: '#999', marginTop: 8 }
 };

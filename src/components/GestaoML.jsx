@@ -186,9 +186,21 @@ export default function GestaoML() {
           de ~360px. */}
       <style>{`
         @media (max-width: 640px) {
-          .app-header { padding: 16px !important; }
-          .app-title { font-size: 20px !important; }
-          .app-logo { height: 40px !important; }
+          .app-header {
+            padding: 8px 12px !important;
+            grid-template-columns: auto 1fr auto !important;
+            gap: 8px !important;
+          }
+          .app-title {
+            font-size: 14px !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .app-logo { height: 26px !important; }
+          .app-logo-chip { padding: 5px 10px !important; }
+          .app-username { display: none; }
+          .app-logout-button { padding: 5px 10px !important; font-size: 12px !important; }
           .app-body-row { flex-direction: column; }
           .app-sidebar {
             width: 100% !important;
@@ -204,7 +216,7 @@ export default function GestaoML() {
       `}</style>
       <div style={styles.appHeader} className="app-header">
         <div style={styles.appHeaderLeft}>
-          <div style={styles.logoChipSmall}>
+          <div style={styles.logoChipSmall} className="app-logo-chip">
             <img src={LOGO_ML} alt="ML Serviços" style={styles.logoMlApp} className="app-logo" />
           </div>
         </div>
@@ -212,8 +224,8 @@ export default function GestaoML() {
           <p style={styles.appSubtitle} className="app-title">Sistema de Gestão Operacional</p>
         </div>
         <div style={{ ...styles.appHeaderRight, ...styles.userBox }}>
-          <span>{usuarioAtivo.nome}</span>
-          <button style={styles.logoutButton} onClick={() => setUsuarioAtivo(null)}>
+          <span className="app-username">{usuarioAtivo.nome}</span>
+          <button style={styles.logoutButton} className="app-logout-button" onClick={() => setUsuarioAtivo(null)}>
             Sair
           </button>
         </div>
@@ -221,6 +233,7 @@ export default function GestaoML() {
       <div style={styles.orangeBar} />
 
       <div style={styles.bodyRow} className="app-body-row">
+        {abaAtual !== 'coletor' && (
         <nav style={styles.sidebar} className="app-sidebar">
           {temDashboard && (
             <button
@@ -272,6 +285,7 @@ export default function GestaoML() {
             </button>
           )}
         </nav>
+        )}
 
         <div style={styles.content} className="app-content">
           {abaAtual === 'dashboard' && temDashboard && <DashboardTab />}

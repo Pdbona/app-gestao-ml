@@ -2,6 +2,28 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { NAVY, ORANGE } from '../lib/styles';
+import { redimensionarImagemParaBase64 } from '../lib/imagem';
+
+// Fotos do romaneio (início/fim) ficam maiores que a selfie/logo — precisam
+// dar pra ler o documento na foto — mas ainda comprimidas o bastante pra
+// não pesar (guardadas em subcoleção `fotos`, ver salvarFotos abaixo).
+const FOTO_OPERACAO_DIM_MAX = 640;
+const FOTO_OPERACAO_QUALIDADE = 0.7;
+
+async function salvarFotos(operacaoId, arquivos, tipo) {
+  const validos = arquivos.filter(Boolean);
+  await Promise.all(
+    validos.map(async (file, i) => {
+      const base64 = await redimensionarImagemParaBase64(file, FOTO_OPERACAO_DIM_MAX, FOTO_OPERACAO_QUALIDADE);
+      await addDoc(collection(db, 'registrosOperacao', operacaoId, 'fotos'), {
+        tipo,
+        ordem: i,
+        base64,
+        criadoEm: serverTimestamp()
+      });
+    })
+  );
+}
 
 const hojeISO = () => new Date().toISOString().slice(0, 10);
 
@@ -193,7 +215,7 @@ export default function ColetorScreen({ usuario }) {
     setErro('');
     setSalvando(true);
     try {
-      await addDoc(collection(db, 'registrosOperacao'), {
+      const novoDocRef = await addDoc(collection(db, 'registrosOperacao'), {
         clienteId,
         fluxoId,
         tipoOperacaoId: tipoId,
@@ -206,6 +228,28 @@ export default function ColetorScreen({ usuario }) {
         fim: null,
         fotosInicioQtd: fotosInicio.filter(Boolean).length
       });
+      await salvarFotos(novoDocRef.id, fotosInicio, 'inicio');
+      // Atualização otimista local — não espera o listener do Firestore
+      // ecoar de volta (com serverTimestamp() pendente, o snapshot local
+      // mostra `inicio: null` até o servidor confirmar, o que podia
+      // deixar a tela "presa" na tela de Nova Operação por um instante
+      // em conexão ruim). Ver mesmo ajuste em `finalizar`.
+      setRegistros((atual) => [
+        ...atual,
+        {
+          id: novoDocRef.id,
+          clienteId,
+          fluxoId,
+          tipoOperacaoId: tipoId,
+          documentoProcesso: documentoProcesso.trim(),
+          qtdVolumes: Number(qtdVolumes),
+          qtdMdo: Number(qtdMdo),
+          usuarioId: usuario.uid,
+          usuarioNome: usuario.nome,
+          inicio: new Date(),
+          fim: null
+        }
+      ]);
       setClienteId('');
       setFluxoId('');
       setTipoId('');
@@ -232,6 +276,13 @@ export default function ColetorScreen({ usuario }) {
         observacao: observacao.trim() || null,
         tempoRealMinutos
       });
+      await salvarFotos(operacaoAtiva.id, fotosFim, 'fim');
+      // Mesmo ajuste de cima: corrige localmente na hora, sem esperar o
+      // listener — é o que resolve a tela ficar "presa" depois de
+      // finalizar (bug relatado pelo Pablo em 03/09/2026).
+      setRegistros((atual) =>
+        atual.map((r) => (r.id === operacaoAtiva.id ? { ...r, fim: new Date(), tempoRealMinutos } : r))
+      );
       setFotosFim([]);
       setObservacao('');
     } catch (e) {

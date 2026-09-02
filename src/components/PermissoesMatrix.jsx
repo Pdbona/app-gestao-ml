@@ -41,7 +41,7 @@ export default function PermissoesMatrix({ value, onChange }) {
           />{' '}
           Dashboard
         </label>
-        <label style={{ fontSize: 14 }}>
+        <label style={{ marginRight: 20, fontSize: 14 }}>
           <input
             type="checkbox"
             checked={Boolean(value.abas?.cadastros)}
@@ -49,6 +49,17 @@ export default function PermissoesMatrix({ value, onChange }) {
           />{' '}
           Cadastros
         </label>
+        <label style={{ fontSize: 14 }}>
+          <input
+            type="checkbox"
+            checked={Boolean(value.abas?.coletor)}
+            onChange={(e) => setAba('coletor', e.target.checked)}
+          />{' '}
+          Coletor
+        </label>
+        <div style={{ fontSize: 12, color: '#777', marginTop: 4 }}>
+          Se "Coletor" for a única aba marcada, o login já leva direto pra tela do Coletor.
+        </div>
       </div>
 
       <div style={{ fontWeight: 700, color: NAVY, marginBottom: 6, fontSize: 13 }}>

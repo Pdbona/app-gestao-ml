@@ -14,7 +14,7 @@ import {
 import { ui } from '../../lib/styles';
 import { analisarCalibragem, MIN_AMOSTRA } from '../../lib/calibragem';
 
-const TIPO_VAZIO = { nome: '', fluxoId: '', semPadraoMeta: true, metaTempoMinutos: '', ativo: true };
+const TIPO_VAZIO = { nome: '', semPadraoMeta: true, metaTempoMinutos: '', ativo: true };
 
 const STATUS_LABEL = {
   sem_dados: { texto: `Aguardando registros (0/${MIN_AMOSTRA})`, estilo: 'badgeCinza' },
@@ -24,11 +24,13 @@ const STATUS_LABEL = {
   dentro_da_meta: { texto: 'Dentro da meta', estilo: 'badgeVerde' }
 };
 
+// O Tipo de Operação NÃO se vincula a uma Operação/Fluxo aqui no cadastro —
+// esse vínculo é feito depois, na tela do Coletor, na hora de registrar de
+// verdade (o coletor escolhe a Operação e o Tipo separadamente).
 export default function TiposOperacaoCadastro({ permissoes }) {
   const perm = permissoes.cadastros?.tiposOperacao || {};
 
   const [tipos, setTipos] = useState([]);
-  const [fluxos, setFluxos] = useState([]);
   const [registros, setRegistros] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [formAberto, setFormAberto] = useState(false);
@@ -47,13 +49,6 @@ export default function TiposOperacaoCadastro({ permissoes }) {
       },
       () => setCarregando(false)
     );
-    const qFluxos = query(collection(db, 'fluxos'), orderBy('nome'));
-    const unsubFluxos = onSnapshot(qFluxos, (snap) => {
-      setFluxos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
-    // Coleção só existe de fato quando a tela de registro de operações
-    // (início/fim + fotos) for construída — por enquanto isso fica vazio,
-    // e todo tipo aparece "Aguardando registros".
     const unsubRegistros = onSnapshot(
       collection(db, 'registrosOperacao'),
       (snap) => setRegistros(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -61,12 +56,9 @@ export default function TiposOperacaoCadastro({ permissoes }) {
     );
     return () => {
       unsubTipos();
-      unsubFluxos();
       unsubRegistros();
     };
   }, []);
-
-  const nomeFluxo = (fluxoId) => fluxos.find((f) => f.id === fluxoId)?.nome || '-';
 
   const calibragemPorTipo = useMemo(() => {
     const mapa = {};
@@ -78,7 +70,7 @@ export default function TiposOperacaoCadastro({ permissoes }) {
   }, [tipos, registros]);
 
   const abrirNovo = () => {
-    setForm({ ...TIPO_VAZIO, fluxoId: fluxos[0]?.id || '' });
+    setForm(TIPO_VAZIO);
     setEditandoId(null);
     setFormAberto(true);
     setErro('');
@@ -87,7 +79,6 @@ export default function TiposOperacaoCadastro({ permissoes }) {
   const abrirEdicao = (tipo) => {
     setForm({
       nome: tipo.nome || '',
-      fluxoId: tipo.fluxoId || '',
       semPadraoMeta: tipo.semPadraoMeta !== false,
       metaTempoMinutos: tipo.metaTempoMinutos || '',
       ativo: tipo.ativo !== false
@@ -109,16 +100,11 @@ export default function TiposOperacaoCadastro({ permissoes }) {
       setErro('Informe o nome do tipo de operação.');
       return;
     }
-    if (!form.fluxoId) {
-      setErro('Selecione o fluxo (cadastre um em Fluxos, se ainda não existir).');
-      return;
-    }
     setSalvando(true);
     setErro('');
     try {
       const payload = {
         nome: form.nome,
-        fluxoId: form.fluxoId,
         ativo: form.ativo,
         semPadraoMeta: form.semPadraoMeta,
         metaTempoMinutos: form.semPadraoMeta ? null : Number(form.metaTempoMinutos) || null
@@ -180,10 +166,9 @@ export default function TiposOperacaoCadastro({ permissoes }) {
       </div>
 
       <p style={ui.placeholderNote}>
-        A calibragem de meta usa os registros de início/fim de cada operação (tela ainda a
-        construir): sugere ajuste depois de {MIN_AMOSTRA} registros, e depois disso a cada 10
-        novos, só quando o desvio da mediana passar de 10% para cima ou para baixo. Nunca aplica
-        sozinho.
+        A calibragem de meta usa os registros de início/fim de cada operação (tela do Coletor):
+        sugere ajuste depois de {MIN_AMOSTRA} registros, e depois disso a cada 10 novos, só quando
+        o desvio da mediana passar de 10% para cima ou para baixo. Nunca aplica sozinho.
       </p>
 
       {erro && <div style={ui.erro}>❌ {erro}</div>}
@@ -198,21 +183,6 @@ export default function TiposOperacaoCadastro({ permissoes }) {
               <input style={ui.input} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
             </label>
             <label style={ui.label}>
-              Fluxo *
-              <select
-                style={ui.input}
-                value={form.fluxoId}
-                onChange={(e) => setForm({ ...form, fluxoId: e.target.value })}
-              >
-                <option value="">Selecione...</option>
-                {fluxos.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={ui.label}>
               Status
               <select
                 style={ui.input}
@@ -224,13 +194,6 @@ export default function TiposOperacaoCadastro({ permissoes }) {
               </select>
             </label>
           </div>
-
-          {fluxos.length === 0 && (
-            <p style={{ ...ui.erro, color: '#B85700' }}>
-              ⚠️ Nenhum fluxo cadastrado ainda — vá em Cadastros → Fluxos e crie ao menos um antes
-              de salvar.
-            </p>
-          )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 10 }}>
             <input
@@ -281,7 +244,6 @@ export default function TiposOperacaoCadastro({ permissoes }) {
             <thead>
               <tr>
                 <th style={ui.th}>Nome</th>
-                <th style={ui.th}>Fluxo</th>
                 <th style={ui.th}>Meta atual</th>
                 <th style={ui.th}>Calibragem</th>
                 <th style={ui.th}>Status</th>
@@ -304,7 +266,6 @@ export default function TiposOperacaoCadastro({ permissoes }) {
                 return (
                   <tr key={tipo.id}>
                     <td style={ui.td}>{tipo.nome}</td>
-                    <td style={ui.td}>{nomeFluxo(tipo.fluxoId)}</td>
                     <td style={ui.td}>
                       {tipo.semPadraoMeta || !tipo.metaTempoMinutos ? (
                         <span style={{ ...ui.badge, ...ui.badgeCinza }}>Sem padrão</span>

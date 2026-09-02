@@ -17,9 +17,12 @@ const TELAS = {
 
 // O item de 1º nível (Cliente/Perfil/Usuários/Operação) já vem escolhido
 // pela sidebar (`secaoAtualId`, controlado em GestaoML.jsx — ver
-// `montarNavegacaoCadastros`). Esta tela só cuida do 2º nível: quando o
-// item é um GRUPO (ex: "Operação" = Tipo de Operação + Operação), mostra a
-// sub-navegação interna entre as telas daquele grupo.
+// `montarNavegacaoCadastros`). Esta tela cuida do 2º nível quando o item é
+// um GRUPO: o grupo "operacao" (Tipo de Operação + Operação) é mostrado
+// lado a lado — Tipo de Operação é a tela principal, Operação vira um card
+// menor ao lado (a pedido do Pablo, já que os dois não têm mais vínculo
+// entre si no cadastro). Um futuro grupo sem esse tratamento especial cai
+// no fallback de sub-abas.
 export default function CadastrosScreen({ permissoes, secaoAtualId }) {
   const navegacao = montarNavegacaoCadastros(permissoes);
   const [subSecaoPorGrupo, setSubSecaoPorGrupo] = useState({});
@@ -30,19 +33,33 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
     return <p style={{ color: '#777' }}>Nenhuma seção de cadastro liberada para o seu usuário.</p>;
   }
 
-  let secaoParaRenderizar;
   if (itemAtual.tipo === 'secao') {
-    secaoParaRenderizar = itemAtual.secao;
-  } else {
-    const subId = subSecaoPorGrupo[itemAtual.id] || itemAtual.secoes[0].id;
-    secaoParaRenderizar = itemAtual.secoes.find((s) => s.id === subId) || itemAtual.secoes[0];
+    const TelaAtiva = TELAS[itemAtual.secao.id];
+    return <TelaAtiva permissoes={permissoes} />;
   }
 
+  if (itemAtual.id === 'operacao') {
+    const idsPresentes = itemAtual.secoes.map((s) => s.id);
+    return (
+      <div style={styles.grupoOperacaoRow}>
+        {idsPresentes.includes('tiposOperacao') && (
+          <div style={{ flex: 1, minWidth: 320 }}>
+            <TiposOperacaoCadastro permissoes={permissoes} />
+          </div>
+        )}
+        {idsPresentes.includes('fluxos') && <FluxosCadastro permissoes={permissoes} compacto />}
+      </div>
+    );
+  }
+
+  // Fallback genérico (grupo desconhecido): sub-abas simples.
+  const subId = subSecaoPorGrupo[itemAtual.id] || itemAtual.secoes[0].id;
+  const secaoParaRenderizar = itemAtual.secoes.find((s) => s.id === subId) || itemAtual.secoes[0];
   const TelaAtiva = TELAS[secaoParaRenderizar.id];
 
   return (
     <div>
-      {itemAtual.tipo === 'grupo' && itemAtual.secoes.length > 1 && (
+      {itemAtual.secoes.length > 1 && (
         <div style={styles.subNav}>
           {itemAtual.secoes.map((s) => (
             <button
@@ -58,13 +75,13 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
           ))}
         </div>
       )}
-
       <TelaAtiva permissoes={permissoes} />
     </div>
   );
 }
 
 const styles = {
+  grupoOperacaoRow: { display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' },
   subNav: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 },
   subNavButton: {
     padding: '6px 14px',

@@ -155,13 +155,6 @@ export default function UsuariosCadastro({ permissoes }) {
         )}
       </div>
 
-      <p style={ui.placeholderNote}>
-        Login só por senha (sem digitar usuário) — ao entrar, o sistema já leva pra tela que o
-        perfil permite. Por isso cada senha precisa ser única entre usuários ativos (sem Firebase
-        Auth ainda — ver nota no código). O bootstrap <strong>130399</strong> continua disponível
-        como acesso de emergência.
-      </p>
-
       {erro && <div style={ui.erro}>❌ {erro}</div>}
 
       {formAberto && (

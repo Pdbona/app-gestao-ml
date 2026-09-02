@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
-import { PERFIL_ADMIN_PADRAO, mergePermissoes, montarNavegacaoCadastros } from '../lib/permissoes';
+import { PERFIL_ADMIN_PADRAO, mergePermissoes, montarNavegacaoCadastros, abaInicial } from '../lib/permissoes';
 import { NAVY, NAVY_LIGHT, ORANGE, ui } from '../lib/styles';
 import DashboardTab from './DashboardTab';
 import CadastrosScreen from './cadastros/CadastrosScreen';
+import ColetorScreen from './ColetorScreen';
 
 // Logo da ML Serviços é a marca principal do app — sempre em destaque. A
 // logo da SBS Solution aparece só como desenvolvedora (rodapé). Arquivos em
@@ -148,13 +149,21 @@ export default function GestaoML() {
   const [cadastrosExpandido, setCadastrosExpandido] = useState(false);
   const [secaoCadastroAtual, setSecaoCadastroAtual] = useState(null);
 
+  // Perfil "exclusivo" de Coletor (só essa aba habilitada) já cai direto
+  // na tela do Coletor; qualquer outro caso cai no Dashboard, como sempre.
+  const handleLoginSuccess = (usuario) => {
+    setUsuarioAtivo(usuario);
+    setAbaAtual(abaInicial(usuario.permissoes));
+  };
+
   if (!usuarioAtivo) {
-    return <LoginScreen onLoginSuccess={setUsuarioAtivo} />;
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
   const permissoes = usuarioAtivo.permissoes;
   const temDashboard = Boolean(permissoes.abas?.dashboard);
   const temCadastros = Boolean(permissoes.abas?.cadastros);
+  const temColetor = Boolean(permissoes.abas?.coletor);
   const navCadastros = temCadastros ? montarNavegacaoCadastros(permissoes) : [];
   const secaoAtual = navCadastros.find((n) => n.id === secaoCadastroAtual) || navCadastros[0];
 
@@ -231,12 +240,24 @@ export default function GestaoML() {
               )}
             </>
           )}
+
+          {temColetor && (
+            <button
+              onClick={() => setAbaAtual('coletor')}
+              style={{ ...styles.sidebarButton, ...(abaAtual === 'coletor' ? styles.sidebarButtonAtivo : {}) }}
+            >
+              📷 Coletor
+            </button>
+          )}
         </nav>
 
         <div style={styles.content}>
           {abaAtual === 'dashboard' && temDashboard && <DashboardTab />}
           {abaAtual === 'cadastros' && temCadastros && (
             <CadastrosScreen permissoes={permissoes} secaoAtualId={secaoAtual?.id} />
+          )}
+          {abaAtual === 'coletor' && temColetor && (
+            <ColetorScreen usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />
           )}
         </div>
       </div>

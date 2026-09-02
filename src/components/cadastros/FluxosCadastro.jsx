@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { ui } from '../../lib/styles';
+import { ui, NAVY } from '../../lib/styles';
 
 const FLUXOS_PADRAO = ['Recebimento', 'Expedição', 'Separação'];
 
 const FLUXO_VAZIO = { nome: '', fotosInicio: 0, fotosFim: 0, ativo: true };
 
-export default function FluxosCadastro({ permissoes }) {
+// `compacto` renderiza um card menor (sem o texto explicativo, título e
+// tabela reduzidos) — usado lado a lado com Tipo de Operação em
+// CadastrosScreen.jsx, a pedido do Pablo, em vez de uma tela cheia separada.
+export default function FluxosCadastro({ permissoes, compacto = false }) {
   const perm = permissoes.cadastros?.fluxos || {};
 
   const [fluxos, setFluxos] = useState([]);
@@ -110,29 +113,31 @@ export default function FluxosCadastro({ permissoes }) {
   const faltamPadroes = FLUXOS_PADRAO.some((nome) => !fluxos.some((f) => f.nome === nome));
 
   return (
-    <div>
+    <div style={compacto ? styles.cardCompacto : undefined}>
       <div style={ui.sectionHeaderRow}>
-        <h2 style={ui.sectionTitle}>Operação</h2>
-        <div style={{ display: 'flex', gap: 10 }}>
+        {compacto ? <h3 style={styles.tituloCompacto}>Operação</h3> : <h2 style={ui.sectionTitle}>Operação</h2>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {perm.criar && faltamPadroes && !carregando && (
-            <button style={ui.secondaryButton} onClick={criarPadroes} disabled={salvando}>
-              Criar Recebimento/Expedição/Separação
+            <button style={compacto ? ui.smallButton : ui.secondaryButton} onClick={criarPadroes} disabled={salvando}>
+              {compacto ? 'Criar padrão' : 'Criar Recebimento/Expedição/Separação'}
             </button>
           )}
           {perm.criar && !formAberto && (
-            <button style={ui.primaryButton} onClick={abrirNovo}>
-              ➕ Nova operação (Outros)
+            <button style={compacto ? ui.smallButton : ui.primaryButton} onClick={abrirNovo}>
+              ➕ {compacto ? 'Outros' : 'Nova operação (Outros)'}
             </button>
           )}
         </div>
       </div>
 
-      <p style={ui.placeholderNote}>
-        Cada operação define quantas fotos são obrigatórias no início e no fim (0 = não
-        obrigatório). Recebimento, Expedição e Separação são as operações padrão — qualquer outro
-        nome cadastrado aqui entra como "Outros". Isso vai definir o que o perfil de Operação
-        (coletor) precisa preencher em cada uma.
-      </p>
+      {!compacto && (
+        <p style={ui.placeholderNote}>
+          Cada operação define quantas fotos são obrigatórias no início e no fim (0 = não
+          obrigatório). Recebimento, Expedição e Separação são as operações padrão — qualquer
+          outro nome cadastrado aqui entra como "Outros". Isso vai definir o que a tela do Coletor
+          exige em cada uma.
+        </p>
+      )}
 
       {erro && <div style={ui.erro}>❌ {erro}</div>}
 
@@ -193,6 +198,32 @@ export default function FluxosCadastro({ permissoes }) {
         <p>Carregando operações...</p>
       ) : fluxos.length === 0 ? (
         <p style={ui.placeholderNote}>Nenhuma operação cadastrada ainda.</p>
+      ) : compacto ? (
+        <div style={styles.listaCompacta}>
+          {fluxos.map((f) => (
+            <div key={f.id} style={styles.itemCompacto}>
+              <div>
+                <strong>{f.nome}</strong>{' '}
+                <span style={{ ...ui.badge, ...(f.ativo !== false ? ui.badgeVerde : ui.badgeCinza) }}>
+                  {f.ativo !== false ? 'Ativo' : 'Inativo'}
+                </span>
+                <div style={styles.fotosCompacto}>📷 início: {f.fotosInicio || 0} · fim: {f.fotosFim || 0}</div>
+              </div>
+              <div>
+                {perm.editar && (
+                  <button style={ui.linkButton} onClick={() => abrirEdicao(f)}>
+                    Editar
+                  </button>
+                )}
+                {perm.deletar && (
+                  <button style={{ ...ui.linkButton, color: '#D32F2F' }} onClick={() => excluir(f)}>
+                    Excluir
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div style={ui.tableWrapper}>
           <table style={ui.table}>
@@ -237,3 +268,26 @@ export default function FluxosCadastro({ permissoes }) {
     </div>
   );
 }
+
+const styles = {
+  cardCompacto: {
+    background: '#FFF',
+    borderRadius: 8,
+    padding: 16,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+    width: '100%',
+    maxWidth: 340
+  },
+  tituloCompacto: { margin: '0 0 12px', fontSize: 15, color: NAVY },
+  listaCompacta: { display: 'flex', flexDirection: 'column', gap: 10 },
+  itemCompacto: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: '8px 0',
+    borderBottom: '1px solid #EEE',
+    fontSize: 13
+  },
+  fotosCompacto: { fontSize: 11, color: '#777', marginTop: 4 }
+};

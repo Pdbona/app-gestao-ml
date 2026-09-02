@@ -37,17 +37,22 @@ Estrutura e padrões seguem a skill `sbs-webapp` do workspace SBS Solution.
     matriz de permissões (abas + ações por seção de Cadastros)
   - **Usuários** — nome + senha alfanumérica única, vínculo a um perfil, e
     permissões customizadas opcionais por usuário
-  - **Operação** (grupo, ver `src/components/cadastros/CadastrosScreen.jsx`):
+  - **Operação** (grupo, ver `src/components/cadastros/CadastrosScreen.jsx`)
+    — mostrado lado a lado, sem vínculo entre os dois (o vínculo é feito na
+    hora, na tela do Coletor):
     - **Tipo de Operação** — meta de tempo por tipo + motor de calibragem
       (sugere ajuste depois de 5 registros início/fim, depois a cada 10,
       tolerância de 10% — nunca aplica sozinho; ver `src/lib/calibragem.js`)
-    - **Operação** (Recebimento/Expedição/Separação/Outros) — qtd. de fotos
-      obrigatórias no início e no fim de cada uma (0 = não obrigatório);
-      isso vai definir o que o futuro perfil de Operação (coletor) precisa
-      preencher
-- ⏳ Falta a tela de **registro de operações** em si (abrir/fechar uma
-  operação de um tipo, tirando as fotos exigidas pelo fluxo) — é o que
-  alimenta a calibragem de metas; ainda não foi pedida/desenhada
+    - **Operação** (Recebimento/Expedição/Separação/Outros, card compacto)
+      — qtd. de fotos obrigatórias no início e no fim de cada uma (0 = não
+      obrigatório)
+- ✅ Aba **Coletor** (`src/components/ColetorScreen.jsx`) — quem está no
+  campo escolhe a Operação + o Tipo de Operação, tira as fotos exigidas,
+  inicia e depois finaliza; o tempo real vira registro pra calibragem.
+  Perfil "exclusivo" de Coletor (só essa aba habilitada) já cai direto
+  nessa tela ao logar, sem passar pelo Dashboard (`abaInicial()` em
+  `src/lib/permissoes.js`). ⚠️ Fotos ainda não são enviadas/guardadas de
+  verdade (falta configurar o Firebase Storage) — só a contagem é validada.
 - ✅ **Projeto Firebase real criado e configurado** — `app-gestao-ml`
   (Firestore em `southamerica-east1`/São Paulo, regras publicadas, config
   real em `src/firebase.js`)

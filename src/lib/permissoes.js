@@ -3,9 +3,14 @@
 // ============================================================
 //
 // Toda permissão é organizada em duas camadas:
-//   1. `abas`        — quais telas de topo o usuário vê (dashboard, cadastros)
+//   1. `abas`        — quais telas de topo o usuário vê (dashboard, cadastros,
+//      coletor)
 //   2. `cadastros`   — dentro de Cadastros, o que cada seção permite
 //      (visualizar/criar/editar/deletar)
+//
+// `abas.coletor` é especial: se for a ÚNICA aba habilitada pro usuário
+// (perfil "exclusivo" de Coletor), o login já leva direto pra tela do
+// Coletor em vez do Dashboard — ver `abaInicial()` em GestaoML.jsx.
 //
 // Um usuário tem um `perfilId` (perfil base, cadastrado em Cadastros →
 // Perfis) e, opcionalmente, `permissoesCustom` — um objeto PARCIAL no mesmo
@@ -35,7 +40,7 @@ export function permissoesVazias() {
   SECOES_CADASTRO.forEach((s) => {
     cadastros[s.id] = { visualizar: false, criar: false, editar: false, deletar: false };
   });
-  return { abas: { dashboard: true, cadastros: false }, cadastros };
+  return { abas: { dashboard: true, cadastros: false, coletor: false }, cadastros };
 }
 
 export function permissoesTotais() {
@@ -43,7 +48,7 @@ export function permissoesTotais() {
   SECOES_CADASTRO.forEach((s) => {
     cadastros[s.id] = { visualizar: true, criar: true, editar: true, deletar: true };
   });
-  return { abas: { dashboard: true, cadastros: true }, cadastros };
+  return { abas: { dashboard: true, cadastros: true, coletor: true }, cadastros };
 }
 
 // Perfil "de fábrica": sempre existe, mesmo sem nenhum dado no Firestore
@@ -78,6 +83,16 @@ export function mergePermissoes(base, overrides) {
 
 export function temPermissaoCadastro(permissoes, secao, acao) {
   return Boolean(permissoes?.cadastros?.[secao]?.[acao]);
+}
+
+// Aba em que o usuário cai logo após o login. Se "coletor" for a ÚNICA aba
+// habilitada (perfil exclusivo de coletor), vai direto pra lá — senão,
+// segue o padrão de sempre: Dashboard.
+export function abaInicial(permissoes) {
+  const abas = permissoes?.abas || {};
+  const outras = Object.keys(abas).filter((k) => k !== 'coletor' && abas[k]);
+  if (abas.coletor && outras.length === 0) return 'coletor';
+  return 'dashboard';
 }
 
 // Monta a árvore de navegação de 1º nível de Cadastros a partir das seções

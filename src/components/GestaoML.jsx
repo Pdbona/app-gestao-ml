@@ -107,7 +107,7 @@ function LoginScreen({ onLoginSuccess }) {
           <div style={styles.logoChip}>
             <img src={LOGO_ML} alt="ML Serviços" style={styles.logoMlLogin} />
           </div>
-          <p style={styles.loginSubtitle}>Sistema de Gestão</p>
+          <p style={styles.loginSubtitle}>Sistema de Gestão Operacional</p>
         </div>
       </div>
       <div style={styles.orangeBar} />
@@ -145,7 +145,7 @@ function LoginScreen({ onLoginSuccess }) {
 export default function GestaoML() {
   const [usuarioAtivo, setUsuarioAtivo] = useState(null);
   const [abaAtual, setAbaAtual] = useState('dashboard');
-  const [cadastrosExpandido, setCadastrosExpandido] = useState(true);
+  const [cadastrosExpandido, setCadastrosExpandido] = useState(false);
   const [secaoCadastroAtual, setSecaoCadastroAtual] = useState(null);
 
   if (!usuarioAtivo) {
@@ -160,7 +160,7 @@ export default function GestaoML() {
 
   const abrirCadastros = () => {
     setAbaAtual('cadastros');
-    setCadastrosExpandido(true);
+    setCadastrosExpandido((expandido) => !expandido);
   };
 
   const abrirSecaoCadastro = (id) => {
@@ -172,13 +172,15 @@ export default function GestaoML() {
   return (
     <div style={styles.appShell}>
       <div style={styles.appHeader}>
-        <div style={styles.appHeaderBrand}>
+        <div style={styles.appHeaderLeft}>
           <div style={styles.logoChipSmall}>
             <img src={LOGO_ML} alt="ML Serviços" style={styles.logoMlApp} />
           </div>
-          <p style={styles.appSubtitle}>Sistema de Gestão</p>
         </div>
-        <div style={styles.userBox}>
+        <div style={styles.appHeaderCenter}>
+          <p style={styles.appSubtitle}>Sistema de Gestão Operacional</p>
+        </div>
+        <div style={{ ...styles.appHeaderRight, ...styles.userBox }}>
           <span>{usuarioAtivo.nome}</span>
           <button style={styles.logoutButton} onClick={() => setUsuarioAtivo(null)}>
             Sair
@@ -263,7 +265,7 @@ const styles = {
     padding: '28px 20px'
   },
   loginHeaderInner: { maxWidth: 420, margin: '0 auto', textAlign: 'center' },
-  loginSubtitle: { margin: '10px 0 0', fontSize: 13, opacity: 0.85, letterSpacing: 0.5 },
+  loginSubtitle: { margin: '10px 0 0', fontSize: 26, fontWeight: 600, opacity: 0.9, letterSpacing: 0.5 },
   logoChip: {
     display: 'inline-flex',
     background: '#FFF',
@@ -301,12 +303,14 @@ const styles = {
     background: `linear-gradient(135deg, ${NAVY}, ${NAVY_LIGHT})`,
     color: '#FFF',
     padding: '26px 28px',
-    display: 'flex',
+    display: 'grid',
+    gridTemplateColumns: '1fr auto 1fr',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 16
   },
-  appHeaderBrand: { display: 'flex', alignItems: 'center', gap: 18 },
+  appHeaderLeft: { justifySelf: 'start' },
+  appHeaderCenter: { justifySelf: 'center', textAlign: 'center' },
+  appHeaderRight: { justifySelf: 'end' },
   logoChipSmall: {
     display: 'inline-flex',
     background: '#FFF',
@@ -315,7 +319,7 @@ const styles = {
     boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
   },
   logoMlApp: { height: 64, width: 'auto', display: 'block' },
-  appSubtitle: { margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: 0.5, opacity: 0.9 },
+  appSubtitle: { margin: 0, fontSize: 34, fontWeight: 700, letterSpacing: 0.5 },
   userBox: { display: 'flex', alignItems: 'center', gap: 12, fontSize: 14 },
   logoutButton: {
     padding: '6px 14px',

@@ -2,6 +2,9 @@
 
 App de gestão para a **ML Serviços** — SBS Solution.
 
+🔗 **No ar:** https://pdbona.github.io/app-gestao-ml/
+📦 **Repositório:** https://github.com/Pdbona/app-gestao-ml
+
 Cadastro dos clientes atendidos pela ML Serviços (ex: Belmicro, ML-Brasil Web,
 Wepink e futuros) e, com o tempo, registro das demandas/atividades de cada um.
 Cada cliente poderá futuramente ter um perfil de acesso próprio, restrito aos
@@ -39,7 +42,9 @@ Estrutura e padrões seguem a skill `sbs-webapp` do workspace SBS Solution.
 - ✅ **Identidade visual**: logo da ML Serviços em destaque no cabeçalho
   (login e app), logo da SBS Solution no rodapé como desenvolvedora —
   arquivos otimizados em `public/logos/` (originais em `SBS_Logos/`)
-- ⏳ Sem repositório GitHub ainda
+- ✅ **Repositório no GitHub criado e publicado** — `Pdbona/app-gestao-ml`,
+  deploy automático via GitHub Actions → GitHub Pages a cada push na `main`
+  (branch `gh-pages`, workflow em `.github/workflows/deploy.yml`)
 
 ## Rodar localmente
 
@@ -51,15 +56,14 @@ npm start
 O Firebase já está configurado (`app-gestao-ml`), então salvar/listar dados
 funciona normalmente com internet.
 
-## Próximos passos — GitHub
+## Deploy
 
-### Criar o repositório no GitHub
-1. Crie um repositório vazio (ex: `app-gestao-ml`) na sua conta GitHub.
-2. Atualize o campo `"homepage"` em [`package.json`](package.json) trocando `SEU_USUARIO` pelo seu usuário do GitHub.
-3. Suba este código (`git init`, `git add .`, `git commit`, `git remote add origin ...`, `git push`).
-4. **Settings → Pages → Source: gh-pages branch** (o workflow em `.github/workflows/deploy.yml` já publica automaticamente a cada push na `main`).
-5. Deploy leva 2-4 minutos após o push.
+Todo push na branch `main` dispara o workflow `Deploy` (GitHub Actions), que
+builda o app e publica no branch `gh-pages` — o GitHub Pages já está apontado
+pra esse branch. Leva 2-4 minutos após o push pra ir ao ar em
+https://pdbona.github.io/app-gestao-ml/.
 
-Me avise quando quiser seguir com isso que eu te guio tela por tela (posso
-criar o repositório junto com você direto no seu GitHub, do mesmo jeito que
-fiz com o Firebase).
+**Nota (02/09/2026):** o primeiro deploy falhou com `exit code 128` porque o
+`GITHUB_TOKEN` padrão de repositórios novos vem como somente leitura — corrigido
+adicionando `permissions: contents: write` no topo do `deploy.yml`. Se algum
+outro app SBS tiver o mesmo problema, a correção é a mesma.

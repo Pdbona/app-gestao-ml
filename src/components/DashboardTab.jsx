@@ -102,6 +102,29 @@ export default function DashboardTab() {
   const nomeTipo = (id) => tiposOperacao.find((t) => t.id === id)?.nome || '(tipo removido)';
   const nomeFluxo = (id) => fluxos.find((f) => f.id === id)?.nome || '(operação removida)';
 
+  const formatarHoraMin = (minutos) => {
+    const h = Math.floor(minutos / 60);
+    const m = minutos % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  // Cor de destaque do nome da Operação (fluxo) nos cards — pedido do
+  // Pablo: Recebimento azul, Expedição vermelho, Separação laranja,
+  // Outros preto. Casa pelo nome (sem acento/maiúscula) em vez de um id
+  // fixo, porque Fluxo é um cadastro livre — nomes fora desses 4 ficam
+  // sem destaque (cor padrão do texto).
+  const corFluxo = (nome) => {
+    const chave = (nome || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase();
+    if (chave.includes('recebimento')) return '#2a78d6';
+    if (chave.includes('expedicao')) return '#e34948';
+    if (chave.includes('separacao')) return '#eb6834';
+    if (chave.includes('outros')) return '#0b0b0b';
+    return undefined;
+  };
+
   // ======== Seção 1: Operações do dia (Coletor), por cliente ========
   const operacoesHojePorCliente = useMemo(() => {
     const porCliente = {};
@@ -113,10 +136,15 @@ export default function DashboardTab() {
         porCliente[chave].push(r);
       });
     return Object.entries(porCliente)
-      .map(([clienteId, itens]) => ({
-        clienteId,
-        itens: itens.sort((a, b) => (paraMillis(b.inicio) || 0) - (paraMillis(a.inicio) || 0))
-      }))
+      .map(([clienteId, itensBrutos]) => {
+        const itens = itensBrutos.sort((a, b) => (paraMillis(b.inicio) || 0) - (paraMillis(a.inicio) || 0));
+        const resumo = {
+          totalOperacoes: itens.length,
+          tempoTotalMinutos: itens.reduce((soma, op) => soma + (op.tempoRealMinutos || 0), 0),
+          totalVolumes: itens.reduce((soma, op) => soma + (Number(op.qtdVolumes) || 0), 0)
+        };
+        return { clienteId, itens, resumo };
+      })
       .sort((a, b) =>
         (a.clienteId === '_semCliente' ? 'zzz' : nomeCliente(a.clienteId)).localeCompare(
           b.clienteId === '_semCliente' ? 'zzz' : nomeCliente(b.clienteId)
@@ -309,7 +337,7 @@ export default function DashboardTab() {
         <p style={ui.placeholderNote}>Nenhuma operação registrada no Coletor hoje.</p>
       ) : (
         <div style={styles.cardsGrid}>
-          {operacoesHojePorCliente.map(({ clienteId, itens }) => {
+          {operacoesHojePorCliente.map(({ clienteId, itens, resumo }) => {
             const c = cliente(clienteId);
             const temEmAndamento = itens.some((op) => !op.fim);
             return (
@@ -321,11 +349,18 @@ export default function DashboardTab() {
                   {c?.logoBase64 && <img src={c.logoBase64} alt="" style={styles.cardLogo} />}
                   <strong>{clienteId === '_semCliente' ? '(sem cliente informado)' : nomeCliente(clienteId)}</strong>
                 </div>
-                {itens.map((op) => (
+                <div style={styles.resumoCard}>
+                  <span>{resumo.totalOperacoes} operação(ões)</span>
+                  <span>⏱ {formatarHoraMin(resumo.tempoTotalMinutos)}</span>
+                  <span>📦 {resumo.totalVolumes} volume(s)</span>
+                </div>
+                {itens.map((op) => {
+                  const nomeFluxoOp = nomeFluxo(op.fluxoId);
+                  return (
                   <div key={op.id} style={styles.operacaoRow}>
                     <div style={styles.operacaoTopo}>
                       <span style={styles.turnoNome}>
-                        {nomeTipo(op.tipoOperacaoId)} — {nomeFluxo(op.fluxoId)}
+                        {nomeTipo(op.tipoOperacaoId)} — <span style={{ color: corFluxo(nomeFluxoOp) }}>{nomeFluxoOp}</span>
                       </span>
                       {op.fim ? (
                         <span style={{ ...ui.badge, ...ui.badgeVerde }}>
@@ -351,7 +386,8 @@ export default function DashboardTab() {
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             );
           })}
@@ -646,6 +682,19 @@ const styles = {
     fontSize: 15
   },
   cardLogo: { width: 32, height: 32, objectFit: 'contain', borderRadius: 6, background: '#FAFAFA' },
+
+  resumoCard: {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#666',
+    background: '#F7F8FA',
+    borderRadius: 6,
+    padding: '6px 10px',
+    marginBottom: 8
+  },
 
   operacaoRow: { padding: '8px 6px', borderBottom: '1px solid #F5F5F5' },
   operacaoTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 },

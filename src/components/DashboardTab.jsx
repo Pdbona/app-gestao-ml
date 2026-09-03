@@ -681,7 +681,7 @@ const styles = {
     color: NAVY,
     fontSize: 15
   },
-  cardLogo: { width: 32, height: 32, objectFit: 'contain', borderRadius: 6, background: '#FAFAFA' },
+  cardLogo: { width: 52, height: 52, objectFit: 'contain', borderRadius: 8, background: '#FAFAFA', flexShrink: 0 },
 
   resumoCard: {
     display: 'flex',

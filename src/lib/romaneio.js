@@ -2,13 +2,64 @@
 // mesmo conceito do app da Superior Transportes: um documento por
 // operação com os dados + as fotos de início/fim, pra imprimir ou
 // mandar pro cliente. 100% no navegador (jsPDF), sem servidor.
+//
+// NÃO baixa mais sozinho — quem chama decide quando (ver o modal de
+// prévia em DashboardTab.jsx, a pedido do Pablo: "gerar em tela e dar
+// opção pra PDF, não gerar PDF direto").
 import { jsPDF } from 'jspdf';
+
+export const NAVY = '#1E3A5F';
+export const ORANGE = '#FF6B00';
+const LOGO_ML_LARGURA = 26;
+const LOGO_ML_ALTURA = 21; // proporção real do PNG (700x564)
 
 function formatarDataHora(valor) {
   if (!valor) return '-';
   const ms = valor?.toMillis ? valor.toMillis() : new Date(valor).getTime();
   if (!ms) return '-';
   return new Date(ms).toLocaleString('pt-BR');
+}
+
+// Exportado — reaproveitado por relatorioPdf.js pra manter o mesmo
+// cabeçalho (logos + faixa laranja) nos dois PDFs.
+export function adicionarCabecalho(docPdf, titulo, subtitulo, logoMlBase64, logoClienteBase64) {
+  const margemEsquerda = 14;
+  const margemDireita = 196;
+  let y = 16;
+
+  if (logoMlBase64) {
+    try {
+      docPdf.addImage(logoMlBase64, 'PNG', margemEsquerda, 8, LOGO_ML_LARGURA, LOGO_ML_ALTURA);
+    } catch (e) {
+      // Logo corrompida — segue sem ela.
+    }
+  }
+  if (logoClienteBase64) {
+    try {
+      docPdf.addImage(logoClienteBase64, 'JPEG', margemDireita - 22, 8, 22, 22);
+    } catch (e) {
+      // idem
+    }
+  }
+
+  docPdf.setTextColor(NAVY);
+  docPdf.setFontSize(16);
+  docPdf.setFont(undefined, 'bold');
+  docPdf.text(titulo, 105, y, { align: 'center' });
+  y += 6;
+  docPdf.setFont(undefined, 'normal');
+  docPdf.setFontSize(10);
+  docPdf.setTextColor('#666666');
+  docPdf.text(subtitulo, 105, y, { align: 'center' });
+
+  docPdf.setDrawColor(ORANGE);
+  docPdf.setLineWidth(1.2);
+  docPdf.line(margemEsquerda, 34, margemDireita, 34);
+  docPdf.setTextColor('#000000');
+  docPdf.setDrawColor('#000000');
+  docPdf.setLineWidth(0.2);
+
+  return 42;
 }
 
 function adicionarGradeFotos(docPdf, titulo, fotos, yInicial) {
@@ -62,19 +113,14 @@ export function gerarRomaneioPdf({
   tempoRealMinutos,
   observacao,
   fotosInicio,
-  fotosFim
+  fotosFim,
+  logoMlBase64,
+  logoClienteBase64
 }) {
   const docPdf = new jsPDF();
   const margemEsquerda = 14;
-  let y = 20;
 
-  docPdf.setFontSize(16);
-  docPdf.setFont(undefined, 'bold');
-  docPdf.text('Romaneio de Operação', margemEsquerda, y);
-  docPdf.setFont(undefined, 'normal');
-  docPdf.setFontSize(10);
-  docPdf.text('ML Serviços — Sistema de Gestão Operacional', margemEsquerda, y + 6);
-  y += 18;
+  let y = adicionarCabecalho(docPdf, 'Romaneio de Operação', clienteNome, logoMlBase64, logoClienteBase64);
 
   const linha = (rotulo, valor) => {
     docPdf.setFont(undefined, 'bold');
@@ -85,7 +131,6 @@ export function gerarRomaneioPdf({
     y += 7;
   };
 
-  linha('Cliente/Local', clienteNome);
   linha('Tipo de Operação', tipoNome);
   linha('Operação', fluxoNome);
   linha('Documento', documentoProcesso);

@@ -5,41 +5,14 @@ import { ui, NAVY } from '../lib/styles';
 import { limparSelfiesVencidas } from '../lib/limpezaSelfies';
 import { limparFotosOperacaoVencidas } from '../lib/limpezaFotosOperacao';
 import { gerarRomaneioPdf } from '../lib/romaneio';
-import { hojeISO, dataLocalISO } from '../lib/data';
+import { obterLogoMlBase64 } from '../lib/logoAssets';
+import { hojeISO, addDiasISO, labelDataCurta, paraMillis, ehMesmoDia, formatarHorario } from '../lib/data';
+
+const LOGO_ML_URL = `${process.env.PUBLIC_URL}/logos/logo-ml.png`;
 
 // Tolerância fixa combinada com o Pablo: 15min depois do início do turno,
 // se ainda faltar gente confirmar presença, dispara o alerta.
 const TOLERANCIA_ATRASO_MINUTOS = 15;
-const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-
-function addDiasISO(iso, n) {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + n);
-  return dataLocalISO(d);
-}
-
-function labelDataCurta(iso, ehHoje) {
-  if (ehHoje) return 'Hoje';
-  const d = new Date(`${iso}T00:00:00`);
-  return `${DIAS_SEMANA[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function paraMillis(valor) {
-  if (!valor) return null;
-  return valor?.toMillis ? valor.toMillis() : new Date(valor).getTime();
-}
-
-function ehMesmoDia(valor, diaISO) {
-  const ms = paraMillis(valor);
-  if (!ms) return false;
-  return dataLocalISO(new Date(ms)) === diaISO;
-}
-
-function formatarHorario(valor) {
-  const ms = paraMillis(valor);
-  if (!ms) return '--:--';
-  return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
 
 function limiteAtrasoAtingido(horaInicio, agora) {
   if (!horaInicio) return false;
@@ -86,7 +59,9 @@ export default function DashboardTab() {
   const [novaQtd, setNovaQtd] = useState('');
   const [salvandoFalta, setSalvandoFalta] = useState(false);
   const [erroFalta, setErroFalta] = useState('');
-  const [pdfGerandoId, setPdfGerandoId] = useState(null);
+  const [abrindoRomaneioId, setAbrindoRomaneioId] = useState(null);
+  const [modalRomaneio, setModalRomaneio] = useState(null);
+  const [baixandoPdf, setBaixandoPdf] = useState(false);
 
   useEffect(() => {
     const unsubs = [
@@ -149,11 +124,34 @@ export default function DashboardTab() {
       );
   }, [registros, hoje]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const gerarPdf = async (op) => {
-    setPdfGerandoId(op.id);
+  // Clicar em "Ver romaneio" só busca as fotos e abre a prévia em tela —
+  // o PDF de verdade só é gerado se o usuário clicar em "Baixar PDF" lá
+  // dentro (pedido do Pablo: "gerar em tela e dar opção pra PDF, não
+  // gerar PDF direto").
+  const abrirRomaneio = async (op) => {
+    setAbrindoRomaneioId(op.id);
     try {
       const fotosSnap = await getDocs(collection(db, 'registrosOperacao', op.id, 'fotos'));
       const todasFotos = fotosSnap.docs.map((d) => d.data());
+      setModalRomaneio({
+        op,
+        fotosInicio: todasFotos.filter((f) => f.tipo === 'inicio').sort((a, b) => a.ordem - b.ordem),
+        fotosFim: todasFotos.filter((f) => f.tipo === 'fim').sort((a, b) => a.ordem - b.ordem)
+      });
+    } catch (e) {
+      window.alert('Falha ao carregar o romaneio. Tente novamente.');
+    } finally {
+      setAbrindoRomaneioId(null);
+    }
+  };
+
+  const fecharRomaneio = () => setModalRomaneio(null);
+
+  const baixarRomaneioPdf = async () => {
+    const { op, fotosInicio, fotosFim } = modalRomaneio;
+    setBaixandoPdf(true);
+    try {
+      const logoMlBase64 = await obterLogoMlBase64();
       gerarRomaneioPdf({
         clienteNome: nomeCliente(op.clienteId),
         tipoNome: nomeTipo(op.tipoOperacaoId),
@@ -166,13 +164,15 @@ export default function DashboardTab() {
         fim: op.fim,
         tempoRealMinutos: op.tempoRealMinutos,
         observacao: op.observacao,
-        fotosInicio: todasFotos.filter((f) => f.tipo === 'inicio').sort((a, b) => a.ordem - b.ordem),
-        fotosFim: todasFotos.filter((f) => f.tipo === 'fim').sort((a, b) => a.ordem - b.ordem)
+        fotosInicio,
+        fotosFim,
+        logoMlBase64,
+        logoClienteBase64: cliente(op.clienteId)?.logoBase64 || null
       });
     } catch (e) {
       window.alert('Falha ao gerar o PDF. Tente novamente.');
     } finally {
-      setPdfGerandoId(null);
+      setBaixandoPdf(false);
     }
   };
 
@@ -344,10 +344,10 @@ export default function DashboardTab() {
                       <button
                         type="button"
                         style={ui.linkButton}
-                        onClick={() => gerarPdf(op)}
-                        disabled={pdfGerandoId === op.id}
+                        onClick={() => abrirRomaneio(op)}
+                        disabled={abrindoRomaneioId === op.id}
                       >
-                        {pdfGerandoId === op.id ? 'Gerando PDF...' : '📄 Gerar romaneio (PDF)'}
+                        {abrindoRomaneioId === op.id ? 'Carregando...' : '📄 Ver romaneio'}
                       </button>
                     )}
                   </div>
@@ -534,6 +534,89 @@ export default function DashboardTab() {
           </div>
         </div>
       )}
+
+      {modalRomaneio && (
+        <div style={styles.overlay} onClick={fecharRomaneio}>
+          <div style={styles.modalRomaneio} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.romaneioCabecalho}>
+              <img src={LOGO_ML_URL} alt="ML Serviços" style={styles.romaneioLogoMl} />
+              <div style={{ textAlign: 'center' }}>
+                <h3 style={{ margin: 0, color: NAVY }}>Romaneio de Operação</h3>
+                <p style={{ margin: '2px 0 0', fontSize: 13, color: '#666' }}>{nomeCliente(modalRomaneio.op.clienteId)}</p>
+              </div>
+              {cliente(modalRomaneio.op.clienteId)?.logoBase64 ? (
+                <img src={cliente(modalRomaneio.op.clienteId).logoBase64} alt="" style={styles.romaneioLogoCliente} />
+              ) : (
+                <div style={{ width: 44 }} />
+              )}
+            </div>
+            <div style={styles.romaneioOrange} />
+
+            <div style={styles.romaneioGrid}>
+              <div>
+                <strong>Tipo de Operação:</strong> {nomeTipo(modalRomaneio.op.tipoOperacaoId)}
+              </div>
+              <div>
+                <strong>Operação:</strong> {nomeFluxo(modalRomaneio.op.fluxoId)}
+              </div>
+              <div>
+                <strong>Documento:</strong> {modalRomaneio.op.documentoProcesso}
+              </div>
+              <div>
+                <strong>Qtd. de volumes:</strong> {modalRomaneio.op.qtdVolumes}
+              </div>
+              <div>
+                <strong>Qtd. de MdO:</strong> {modalRomaneio.op.qtdMdo}
+              </div>
+              <div>
+                <strong>Colaborador:</strong> {modalRomaneio.op.usuarioNome}
+              </div>
+              <div>
+                <strong>Início:</strong> {formatarHorario(modalRomaneio.op.inicio)}
+              </div>
+              <div>
+                <strong>Fim:</strong> {formatarHorario(modalRomaneio.op.fim)}
+                {modalRomaneio.op.tempoRealMinutos ? ` (${modalRomaneio.op.tempoRealMinutos} min)` : ''}
+              </div>
+              {modalRomaneio.op.observacao && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <strong>Observação:</strong> {modalRomaneio.op.observacao}
+                </div>
+              )}
+            </div>
+
+            {modalRomaneio.fotosInicio.length > 0 && (
+              <>
+                <p style={styles.romaneioFotoTitulo}>Fotos de início</p>
+                <div style={styles.romaneioFotosGrid}>
+                  {modalRomaneio.fotosInicio.map((f, i) => (
+                    <img key={i} src={f.base64} alt="" style={styles.romaneioFoto} />
+                  ))}
+                </div>
+              </>
+            )}
+            {modalRomaneio.fotosFim.length > 0 && (
+              <>
+                <p style={styles.romaneioFotoTitulo}>Fotos de fim</p>
+                <div style={styles.romaneioFotosGrid}>
+                  {modalRomaneio.fotosFim.map((f, i) => (
+                    <img key={i} src={f.base64} alt="" style={styles.romaneioFoto} />
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button style={ui.primaryButton} onClick={baixarRomaneioPdf} disabled={baixandoPdf}>
+                {baixandoPdf ? 'Gerando...' : '⬇️ Baixar PDF'}
+              </button>
+              <button style={ui.secondaryButton} onClick={fecharRomaneio}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -615,5 +698,31 @@ const styles = {
     maxWidth: 420,
     width: '90%',
     boxShadow: '0 4px 24px rgba(0,0,0,0.25)'
-  }
+  },
+
+  modalRomaneio: {
+    background: '#FFF',
+    borderRadius: 10,
+    padding: '24px 28px',
+    maxWidth: 560,
+    width: '92%',
+    maxHeight: '88vh',
+    overflowY: 'auto',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.25)'
+  },
+  romaneioCabecalho: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  romaneioLogoMl: { height: 36, width: 'auto' },
+  romaneioLogoCliente: { height: 44, width: 44, objectFit: 'contain', borderRadius: 6, background: '#FAFAFA' },
+  romaneioOrange: { height: 3, background: '#FF6B00', margin: '14px 0 18px', borderRadius: 2 },
+  romaneioGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '8px 16px',
+    fontSize: 13,
+    color: '#333',
+    marginBottom: 8
+  },
+  romaneioFotoTitulo: { fontWeight: 700, color: NAVY, fontSize: 13, margin: '16px 0 8px' },
+  romaneioFotosGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 8 },
+  romaneioFoto: { width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, border: '1px solid #E5E5E5' }
 };

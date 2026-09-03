@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { collection, setDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { ui, NAVY } from '../lib/styles';
 import { obterConfigSelfie, salvarConfigSelfie, RETENCAO_SELFIE_DIAS_PADRAO } from '../lib/limpezaSelfies';
-import { hojeISO, dataLocalISO } from '../lib/data';
+import { hojeISO, datasNoIntervalo, formatarDataBr } from '../lib/data';
 
 const FORM_VAZIO = {
   clienteId: '',
@@ -13,25 +13,6 @@ const FORM_VAZIO = {
   turnoId: '',
   qtdMdo: ''
 };
-
-// Gera a lista de datas (YYYY-MM-DD) entre início e fim, inclusive.
-function datasNoIntervalo(inicio, fim) {
-  const datas = [];
-  let atual = new Date(`${inicio}T00:00:00`);
-  const limite = new Date(`${fim}T00:00:00`);
-  if (Number.isNaN(atual.getTime()) || Number.isNaN(limite.getTime()) || atual > limite) return datas;
-  while (atual <= limite) {
-    datas.push(dataLocalISO(atual));
-    atual.setDate(atual.getDate() + 1);
-  }
-  return datas;
-}
-
-function formatarDataBr(iso) {
-  if (!iso) return '-';
-  const [ano, mes, dia] = iso.split('-');
-  return `${dia}/${mes}/${ano}`;
-}
 
 // Tela do Administrativo pra lançar quanta MdO está direcionada pra cada
 // Cliente/Local, por dia e por turno — é contra isso que o Dashboard

@@ -7,6 +7,7 @@ import DashboardTab from './DashboardTab';
 import CadastrosScreen from './cadastros/CadastrosScreen';
 import ColetorScreen from './ColetorScreen';
 import PlanejamentoScreen from './PlanejamentoScreen';
+import RelatoriosScreen from './RelatoriosScreen';
 
 // Logo da ML Serviços é a marca principal do app — sempre em destaque. A
 // logo da SBS Solution aparece só como desenvolvedora (rodapé). Arquivos em
@@ -166,6 +167,7 @@ export default function GestaoML() {
   const temCadastros = Boolean(permissoes.abas?.cadastros);
   const temColetor = Boolean(permissoes.abas?.coletor);
   const temPlanejamento = Boolean(permissoes.abas?.planejamento);
+  const temRelatorios = Boolean(permissoes.abas?.relatorios);
   const navCadastros = temCadastros ? montarNavegacaoCadastros(permissoes) : [];
   const secaoAtual = navCadastros.find((n) => n.id === secaoCadastroAtual) || navCadastros[0];
 
@@ -295,6 +297,15 @@ export default function GestaoML() {
               🗓️ Planejamento
             </button>
           )}
+
+          {temRelatorios && (
+            <button
+              onClick={() => setAbaAtual('relatorios')}
+              style={{ ...styles.sidebarButton, ...(abaAtual === 'relatorios' ? styles.sidebarButtonAtivo : {}) }}
+            >
+              📈 Relatórios
+            </button>
+          )}
         </nav>
         )}
 
@@ -307,6 +318,7 @@ export default function GestaoML() {
             <ColetorScreen usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />
           )}
           {abaAtual === 'planejamento' && temPlanejamento && <PlanejamentoScreen />}
+          {abaAtual === 'relatorios' && temRelatorios && <RelatoriosScreen />}
         </div>
       </div>
 

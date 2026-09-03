@@ -22,3 +22,56 @@ export function dataLocalISO(valor) {
 export function hojeISO() {
   return dataLocalISO(new Date());
 }
+
+// Lista de datas (YYYY-MM-DD) entre início e fim, inclusive — usada tanto
+// pra lançar um período de planejamento quanto pra agregar um relatório
+// por intervalo.
+export function datasNoIntervalo(inicio, fim) {
+  const datas = [];
+  let atual = new Date(`${inicio}T00:00:00`);
+  const limite = new Date(`${fim}T00:00:00`);
+  if (Number.isNaN(atual.getTime()) || Number.isNaN(limite.getTime()) || atual > limite) return datas;
+  while (atual <= limite) {
+    datas.push(dataLocalISO(atual));
+    atual.setDate(atual.getDate() + 1);
+  }
+  return datas;
+}
+
+export function formatarDataBr(iso) {
+  if (!iso) return '-';
+  const [ano, mes, dia] = iso.split('-');
+  return `${dia}/${mes}/${ano}`;
+}
+
+const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+export function addDiasISO(iso, n) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return dataLocalISO(d);
+}
+
+export function labelDataCurta(iso, ehHoje) {
+  if (ehHoje) return 'Hoje';
+  const d = new Date(`${iso}T00:00:00`);
+  return `${DIAS_SEMANA[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Timestamp do Firestore, Date ou string → milissegundos (ou null).
+export function paraMillis(valor) {
+  if (!valor) return null;
+  return valor?.toMillis ? valor.toMillis() : new Date(valor).getTime();
+}
+
+export function ehMesmoDia(valor, diaISO) {
+  const ms = paraMillis(valor);
+  if (!ms) return false;
+  return dataLocalISO(new Date(ms)) === diaISO;
+}
+
+export function formatarHorario(valor) {
+  const ms = paraMillis(valor);
+  if (!ms) return '--:--';
+  return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}

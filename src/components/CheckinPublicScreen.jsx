@@ -6,8 +6,7 @@ import { NAVY, ORANGE } from '../lib/styles';
 import { normalizarCpf, validarCpf, formatarCpf } from '../lib/cpf';
 import { capturarGeolocalizacao, distanciaMetros, TOLERANCIA_GEO_METROS } from '../lib/geo';
 import { obterConfigSelfie } from '../lib/limpezaSelfies';
-
-const hojeISO = () => new Date().toISOString().slice(0, 10);
+import { hojeISO } from '../lib/data';
 
 // Tela PÚBLICA (sem login) — aberta direto pelo QR Code fixado no
 // Cliente/Local (ver botão "Gerar QR Code" em ClientesCadastro.jsx e a

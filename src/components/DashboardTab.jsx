@@ -5,18 +5,17 @@ import { ui, NAVY } from '../lib/styles';
 import { limparSelfiesVencidas } from '../lib/limpezaSelfies';
 import { limparFotosOperacaoVencidas } from '../lib/limpezaFotosOperacao';
 import { gerarRomaneioPdf } from '../lib/romaneio';
+import { hojeISO, dataLocalISO } from '../lib/data';
 
 // Tolerância fixa combinada com o Pablo: 15min depois do início do turno,
 // se ainda faltar gente confirmar presença, dispara o alerta.
 const TOLERANCIA_ATRASO_MINUTOS = 15;
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-const hojeISO = () => new Date().toISOString().slice(0, 10);
-
 function addDiasISO(iso, n) {
   const d = new Date(`${iso}T00:00:00`);
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return dataLocalISO(d);
 }
 
 function labelDataCurta(iso, ehHoje) {
@@ -33,7 +32,7 @@ function paraMillis(valor) {
 function ehMesmoDia(valor, diaISO) {
   const ms = paraMillis(valor);
   if (!ms) return false;
-  return new Date(ms).toISOString().slice(0, 10) === diaISO;
+  return dataLocalISO(new Date(ms)) === diaISO;
 }
 
 function formatarHorario(valor) {

@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { NAVY, ORANGE } from '../lib/styles';
 import { redimensionarImagemParaBase64 } from '../lib/imagem';
+import { hojeISO } from '../lib/data';
 
 // Fotos do romaneio (início/fim) ficam maiores que a selfie/logo — precisam
 // dar pra ler o documento na foto — mas ainda comprimidas o bastante pra
@@ -24,8 +25,6 @@ async function salvarFotos(operacaoId, arquivos, tipo) {
     })
   );
 }
-
-const hojeISO = () => new Date().toISOString().slice(0, 10);
 
 // Slot de uma foto obrigatória: tira na hora (câmera do celular, sem opção
 // de galeria — `capture="environment"`) e mostra um preview local (blob URL

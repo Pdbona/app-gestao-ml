@@ -3,8 +3,7 @@ import { db } from '../firebase';
 import { collection, setDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { ui, NAVY } from '../lib/styles';
 import { obterConfigSelfie, salvarConfigSelfie, RETENCAO_SELFIE_DIAS_PADRAO } from '../lib/limpezaSelfies';
-
-const hojeISO = () => new Date().toISOString().slice(0, 10);
+import { hojeISO, dataLocalISO } from '../lib/data';
 
 const FORM_VAZIO = {
   clienteId: '',
@@ -22,7 +21,7 @@ function datasNoIntervalo(inicio, fim) {
   const limite = new Date(`${fim}T00:00:00`);
   if (Number.isNaN(atual.getTime()) || Number.isNaN(limite.getTime()) || atual > limite) return datas;
   while (atual <= limite) {
-    datas.push(atual.toISOString().slice(0, 10));
+    datas.push(dataLocalISO(atual));
     atual.setDate(atual.getDate() + 1);
   }
   return datas;

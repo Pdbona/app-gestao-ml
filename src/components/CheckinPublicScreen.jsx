@@ -92,31 +92,16 @@ export default function CheckinPublicScreen({ clienteId }) {
     };
   }, [clienteId]);
 
-  // Regra de janela de horário SÓ se aplica quando há exatamente 1 turno
-  // planejado pro dia (turno auto-selecionado) — com 2+ turnos planejados o
-  // colaborador escolhe manualmente na etapa 'turno', sem checagem nenhuma
-  // de horário (pedido explícito do Pablo).
-  const confirmarCpf = async () => {
-    setErro('');
-    const cpfLimpo = normalizarCpf(cpfDigitado);
-    if (!validarCpf(cpfLimpo)) {
-      setErro('CPF inválido — confira os números digitados.');
-      return;
-    }
-    const encontrado = colaboradores.find((c) => normalizarCpf(c.cpf) === cpfLimpo);
-    if (!encontrado) {
-      setErro('CPF não encontrado na base da ML. Fale com o Administrativo pra ser cadastrado.');
-      return;
-    }
-    setColaborador(encontrado);
-
-    if (turnosDisponiveis.length !== 1) {
-      setEtapa('turno');
-      return;
-    }
-
-    const turno = turnosDisponiveis[0];
-    const solicitacaoId = `${encontrado.id}_${clienteId}_${turno.id}_${hojeISO()}`;
+  // Janela de horário (antes/normal/atraso/expirado) aplicada ao turno que
+  // o colaborador está de fato tentando confirmar — vale tanto quando o
+  // turno foi auto-selecionado (só 1 planejado pro dia) quanto quando foi
+  // escolhido manualmente no seletor (2+ planejados). Antes só rodava no
+  // caso de turno único; com 2+ turnos planejados dava pra escolher
+  // QUALQUER um sem checagem nenhuma (bug relatado pelo Pablo com dado
+  // real: DIURNO já encerrado há quase 6h ainda deixou confirmar, porque
+  // NOTURNO também estava planejado pro mesmo dia).
+  const avaliarTurnoEscolhido = async (turno, colaboradorEscolhido) => {
+    const solicitacaoId = `${colaboradorEscolhido.id}_${clienteId}_${turno.id}_${hojeISO()}`;
 
     setVerificandoCpf(true);
     try {
@@ -160,9 +145,9 @@ export default function CheckinPublicScreen({ clienteId }) {
       }
       if (statusJanela === 'atraso') {
         await setDoc(doc(db, 'solicitacoesPresenca', solicitacaoId), {
-          colaboradorId: encontrado.id,
-          colaboradorNome: encontrado.nome,
-          cpf: cpfLimpo,
+          colaboradorId: colaboradorEscolhido.id,
+          colaboradorNome: colaboradorEscolhido.nome,
+          cpf: normalizarCpf(colaboradorEscolhido.cpf),
           clienteId,
           clienteNome: cliente.nome,
           turnoId: turno.id,
@@ -193,13 +178,40 @@ export default function CheckinPublicScreen({ clienteId }) {
     }
   };
 
-  const confirmarTurno = () => {
+  const confirmarCpf = async () => {
+    setErro('');
+    const cpfLimpo = normalizarCpf(cpfDigitado);
+    if (!validarCpf(cpfLimpo)) {
+      setErro('CPF inválido — confira os números digitados.');
+      return;
+    }
+    const encontrado = colaboradores.find((c) => normalizarCpf(c.cpf) === cpfLimpo);
+    if (!encontrado) {
+      setErro('CPF não encontrado na base da ML. Fale com o Administrativo pra ser cadastrado.');
+      return;
+    }
+    setColaborador(encontrado);
+
+    if (turnosDisponiveis.length !== 1) {
+      setEtapa('turno');
+      return;
+    }
+
+    await avaliarTurnoEscolhido(turnosDisponiveis[0], encontrado);
+  };
+
+  const confirmarTurno = async () => {
     if (!turnoId) {
       setErro('Selecione o turno.');
       return;
     }
+    const turno = turnosDisponiveis.find((t) => t.id === turnoId);
+    if (!turno) {
+      setErro('Turno inválido — selecione novamente.');
+      return;
+    }
     setErro('');
-    setEtapa('selfie');
+    await avaliarTurnoEscolhido(turno, colaborador);
   };
 
   const confirmarSelfie = () => {
@@ -344,8 +356,8 @@ export default function CheckinPublicScreen({ clienteId }) {
               </select>
             </label>
             {erro && <div style={styles.erroTexto}>❌ {erro}</div>}
-            <button style={styles.botaoGrande} onClick={confirmarTurno}>
-              Continuar
+            <button style={styles.botaoGrande} onClick={confirmarTurno} disabled={verificandoCpf}>
+              {verificandoCpf ? 'Verificando...' : 'Continuar'}
             </button>
           </>
         )}

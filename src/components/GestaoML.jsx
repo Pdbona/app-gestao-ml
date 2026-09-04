@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { db } from '../firebase';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { PERFIL_ADMIN_PADRAO, mergePermissoes, montarNavegacaoCadastros, abaInicial } from '../lib/permissoes';
 import { NAVY, NAVY_LIGHT, ORANGE, ui } from '../lib/styles';
 import DashboardTab from './DashboardTab';
@@ -151,6 +151,7 @@ export default function GestaoML() {
   const [abaAtual, setAbaAtual] = useState('dashboard');
   const [cadastrosExpandido, setCadastrosExpandido] = useState(false);
   const [secaoCadastroAtual, setSecaoCadastroAtual] = useState(null);
+  const [pendentesAutorizacao, setPendentesAutorizacao] = useState(0);
 
   // Perfil "exclusivo" de Coletor (só essa aba habilitada) já cai direto
   // na tela do Coletor; qualquer outro caso cai no Dashboard, como sempre.
@@ -158,6 +159,25 @@ export default function GestaoML() {
     setUsuarioAtivo(usuario);
     setAbaAtual(abaInicial(usuario.permissoes));
   };
+
+  // Pedido do Pablo: quem tem a permissão de Autorizações marcada no
+  // perfil vê um popup em QUALQUER tela do app avisando que tem
+  // solicitação de presença pendente, não só quando entra na aba
+  // Autorizações — clicar no popup já leva direto pra lá. Precisa ficar
+  // ANTES do `if (!usuarioAtivo)` porque hook não pode ser condicional; o
+  // próprio efeito decide se inscreve ou não.
+  useEffect(() => {
+    if (!usuarioAtivo?.permissoes?.abas?.autorizacoes) {
+      setPendentesAutorizacao(0);
+      return undefined;
+    }
+    const unsub = onSnapshot(
+      collection(db, 'solicitacoesPresenca'),
+      (snap) => setPendentesAutorizacao(snap.docs.filter((d) => d.data().status === 'pendente').length),
+      () => setPendentesAutorizacao(0)
+    );
+    return () => unsub();
+  }, [usuarioAtivo]);
 
   if (!usuarioAtivo) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
@@ -191,6 +211,10 @@ export default function GestaoML() {
           sidebar fixa de 210px sozinha já não sobra espaço útil numa tela
           de ~360px. */}
       <style>{`
+        @keyframes popupAutorizacaoPulso {
+          0%, 100% { box-shadow: 0 6px 24px rgba(0,0,0,0.18); }
+          50% { box-shadow: 0 6px 26px rgba(255,107,0,0.45); }
+        }
         @media (max-width: 640px) {
           .app-header {
             padding: 8px 12px !important;
@@ -315,6 +339,7 @@ export default function GestaoML() {
               style={{ ...styles.sidebarButton, ...(abaAtual === 'autorizacoes' ? styles.sidebarButtonAtivo : {}) }}
             >
               🔔 Autorizações
+              {pendentesAutorizacao > 0 && <span style={styles.sidebarBadge}>{pendentesAutorizacao}</span>}
             </button>
           )}
         </nav>
@@ -345,6 +370,18 @@ export default function GestaoML() {
           <span style={styles.footerText}>Desenvolvido pela SBS Solution e Byplo.</span>
         </div>
       </div>
+
+      {pendentesAutorizacao > 0 && abaAtual !== 'autorizacoes' && (
+        <button type="button" style={styles.popupAutorizacao} onClick={() => setAbaAtual('autorizacoes')}>
+          <span style={styles.popupAutorizacaoIcone}>🔔</span>
+          <span>
+            <strong>{pendentesAutorizacao}</strong> solicitação{pendentesAutorizacao > 1 ? 'ões' : ''} de presença
+            pendente{pendentesAutorizacao > 1 ? 's' : ''}
+            <br />
+            <span style={styles.popupAutorizacaoLink}>Ver agora →</span>
+          </span>
+        </button>
+      )}
     </div>
   );
 }
@@ -448,6 +485,15 @@ const styles = {
     fontSize: 14
   },
   sidebarButtonAtivo: { background: NAVY, color: '#FFF' },
+  sidebarBadge: {
+    marginLeft: 8,
+    background: ORANGE,
+    color: '#FFF',
+    borderRadius: 10,
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '1px 7px'
+  },
   sidebarSubGroup: { display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 },
   sidebarSubButton: {
     textAlign: 'left',
@@ -474,5 +520,31 @@ const styles = {
     padding: '4px 12px'
   },
   logoSbsFooter: { height: 22, width: 'auto', display: 'block' },
-  footerText: { fontSize: 13, color: '#DDD' }
+  footerText: { fontSize: 13, color: '#DDD' },
+
+  // Popup flutuante de solicitação de presença pendente — some quando não
+  // há nenhuma pendente ou quando o usuário já está na aba Autorizações
+  // (reativo, sem botão de "dispensar": resolve sozinho quando a fila
+  // esvazia, mesmo espírito do alerta de falta do Dashboard).
+  popupAutorizacao: {
+    position: 'fixed',
+    bottom: 24,
+    right: 24,
+    zIndex: 1200,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 12,
+    background: '#FFF',
+    border: `2px solid ${ORANGE}`,
+    borderRadius: 12,
+    padding: '14px 18px',
+    maxWidth: 300,
+    textAlign: 'left',
+    fontSize: 13,
+    color: '#333',
+    cursor: 'pointer',
+    animation: 'popupAutorizacaoPulso 2.2s ease-in-out infinite'
+  },
+  popupAutorizacaoIcone: { fontSize: 22, lineHeight: 1 },
+  popupAutorizacaoLink: { color: ORANGE, fontWeight: 700, fontSize: 12 }
 };

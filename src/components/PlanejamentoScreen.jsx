@@ -164,9 +164,27 @@ export default function PlanejamentoScreen() {
     }
   };
 
-  const listaFiltrada = planejamentos
-    .filter((p) => !filtroCliente || p.clienteId === filtroCliente)
-    .sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  // Pedido do Pablo: só mostrar planejamento de hoje em diante (data já
+  // superada não precisa mais aparecer aqui — quem quiser histórico usa a
+  // seção de Relatórios), agrupado por Cliente/Local em vez de uma tabela
+  // única, cada cliente com suas datas em ordem DECRESCENTE.
+  const hoje = hojeISO();
+  const cardsPorCliente = (() => {
+    const porCliente = {};
+    planejamentos
+      .filter((p) => p.data >= hoje)
+      .filter((p) => !filtroCliente || p.clienteId === filtroCliente)
+      .forEach((p) => {
+        if (!porCliente[p.clienteId]) porCliente[p.clienteId] = [];
+        porCliente[p.clienteId].push(p);
+      });
+    return Object.entries(porCliente)
+      .map(([clienteId, itens]) => ({
+        clienteId,
+        itens: itens.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0))
+      }))
+      .sort((a, b) => nomeCliente(a.clienteId).localeCompare(nomeCliente(b.clienteId)));
+  })();
 
   return (
     <div>
@@ -187,10 +205,10 @@ export default function PlanejamentoScreen() {
       {erro && <div style={ui.erro}>❌ {erro}</div>}
 
       {formAberto && (
-        <div style={ui.formCard}>
-          <h3 style={{ marginTop: 0 }}>{editandoId ? 'Editar planejamento' : 'Novo planejamento'}</h3>
+        <div style={{ ...ui.formCard, ...styles.formCardCompacto }}>
+          <h3 style={{ marginTop: 0, fontSize: 16 }}>{editandoId ? 'Editar planejamento' : 'Novo planejamento'}</h3>
 
-          <div style={ui.formGrid}>
+          <div style={styles.formGridCompacto}>
             <label style={ui.label}>
               Cliente/Local *
               <select
@@ -295,39 +313,36 @@ export default function PlanejamentoScreen() {
 
       {carregando ? (
         <p>Carregando planejamento...</p>
-      ) : listaFiltrada.length === 0 ? (
-        <p style={ui.placeholderNote}>Nenhum planejamento lançado ainda.</p>
+      ) : cardsPorCliente.length === 0 ? (
+        <p style={ui.placeholderNote}>Nenhum planejamento a partir de hoje.</p>
       ) : (
-        <div style={ui.tableWrapper}>
-          <table style={ui.table}>
-            <thead>
-              <tr>
-                <th style={ui.th}>Data</th>
-                <th style={ui.th}>Cliente/Local</th>
-                <th style={ui.th}>Turno</th>
-                <th style={ui.th}>Qtd. MdO</th>
-                <th style={ui.th}>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {listaFiltrada.map((p) => (
-                <tr key={p.id}>
-                  <td style={ui.td}>{formatarDataBr(p.data)}</td>
-                  <td style={ui.td}>{nomeCliente(p.clienteId)}</td>
-                  <td style={ui.td}>{nomeTurno(p.turnoId)}</td>
-                  <td style={ui.td}>{p.qtdMdo}</td>
-                  <td style={ui.td}>
-                    <button style={ui.linkButton} onClick={() => abrirEdicao(p)}>
-                      Editar
-                    </button>
-                    <button style={{ ...ui.linkButton, color: '#D32F2F' }} onClick={() => excluir(p)}>
-                      Excluir
-                    </button>
-                  </td>
-                </tr>
+        <div style={styles.cardsGrid}>
+          {cardsPorCliente.map(({ clienteId, itens }) => (
+            <div key={clienteId} style={styles.clienteCard}>
+              <div style={styles.clienteCardHeader}>{nomeCliente(clienteId)}</div>
+              {itens.map((p) => (
+                <div key={p.id} style={styles.itemRow}>
+                  <div>
+                    <div style={styles.itemData}>
+                      {p.data === hoje ? 'Hoje' : formatarDataBr(p.data)}
+                    </div>
+                    <div style={styles.itemTurno}>{nomeTurno(p.turnoId)}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={styles.itemQtd}>{p.qtdMdo} MdO</div>
+                    <div>
+                      <button style={{ ...ui.linkButton, fontSize: 12, marginRight: 10 }} onClick={() => abrirEdicao(p)}>
+                        Editar
+                      </button>
+                      <button style={{ ...ui.linkButton, fontSize: 12, color: '#D32F2F' }} onClick={() => excluir(p)}>
+                        Excluir
+                      </button>
+                    </div>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          ))}
         </div>
       )}
 
@@ -377,3 +392,54 @@ export default function PlanejamentoScreen() {
     </div>
   );
 }
+
+// O form padrão (`ui.formCard`/`ui.formGrid`) é largura-total e 1fr-em-1fr —
+// funciona bem em formulários com campos de tamanho parecido, mas aqui o
+// card ficava esticado quase pela tela inteira e "Qtd. de MdO" (um número
+// de 1-2 dígitos) virava tão largo quanto os selects de Cliente/Turno. Card
+// com teto de largura + colunas proporcionais ao que cada campo realmente
+// precisa (Pablo pediu pra não ocupar a tela toda).
+const styles = {
+  formCardCompacto: { maxWidth: 640 },
+  formGridCompacto: {
+    display: 'grid',
+    gridTemplateColumns: '1.6fr 1.6fr 0.8fr',
+    gap: 14,
+    marginBottom: 14
+  },
+
+  // Cards por Cliente/Local (pedido do Pablo, no lugar da tabela única) —
+  // mesmo teto de largura fixo do Dashboard (não 1fr), pra não esticar um
+  // card sozinho pela tela inteira quando só tem 1-2 clientes.
+  cardsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 320px))',
+    gap: 16
+  },
+  clienteCard: {
+    background: '#FFF',
+    borderRadius: 10,
+    border: '1px solid #E5E5E5',
+    padding: 14,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
+  },
+  clienteCardHeader: {
+    fontWeight: 700,
+    color: NAVY,
+    fontSize: 15,
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottom: '1px solid #F0F0F0'
+  },
+  itemRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: '8px 0',
+    borderBottom: '1px solid #F5F5F5'
+  },
+  itemData: { fontSize: 13, fontWeight: 600, color: '#333' },
+  itemTurno: { fontSize: 11, color: '#999' },
+  itemQtd: { fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 4 }
+};

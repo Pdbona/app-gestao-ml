@@ -7,12 +7,138 @@ import { limparFotosOperacaoVencidas } from '../lib/limpezaFotosOperacao';
 import { gerarRomaneioPdf } from '../lib/romaneio';
 import { obterLogoMlBase64 } from '../lib/logoAssets';
 import { hojeISO, addDiasISO, labelDataCurta, paraMillis, ehMesmoDia, formatarHorario } from '../lib/data';
-import ChartCanvas, { CORES_CATEGORICAS } from './ChartCanvas';
+import ChartCanvas, { CORES_CATEGORICAS, COR_GRADE, COR_INK_MUTED } from './ChartCanvas';
 
 const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 function labelMes(chaveAnoMes) {
   const [ano, mes] = chaveAnoMes.split('-');
   return `${MESES_ABREV[Number(mes) - 1]}/${ano.slice(2)}`;
+}
+
+// Cores fixas por MÉTRICA (não por categoria) — Operações e Tempo médio
+// aparecem juntas nos dois painéis combinados abaixo, então usam sempre os
+// mesmos 2 slots categóricos (skill dataviz: "color follows the entity,
+// never its rank" — cada painel de barra por cliente/mês passou a usar 1
+// cor só, em vez de uma cor por barra, já que a categoria já está no eixo).
+const COR_OPERACOES = CORES_CATEGORICAS[0]; // slot 1 — azul
+const COR_TEMPO = CORES_CATEGORICAS[1]; // slot 2 — laranja
+
+function hexParaRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Largura do eixo Y travada em 40px nos dois mini-gráficos de um mesmo
+// painel — sem isso, o eixo de "Operações" (números tipo "4") e o de
+// "Tempo médio" (números tipo "180") teriam larguras diferentes e as
+// colunas/pontos dos dois gráficos ficariam desalinhados verticalmente.
+function travarLarguraEixoY(scale) {
+  scale.width = 40;
+}
+
+const OPCOES_EIXO_Y_BASE = {
+  beginAtZero: true,
+  afterFit: travarLarguraEixoY,
+  grid: { color: COR_GRADE },
+  ticks: { color: COR_INK_MUTED, font: { size: 10 }, precision: 0 }
+};
+
+// ======== Painel combinado (skill dataviz: nunca eixo duplo — em vez
+// disso, 2 mini-gráficos empilhados com o MESMO eixo X, cada um com seu
+// próprio eixo Y de escala própria). Pra "por mês" (eixo temporal), o
+// painel de baixo é uma LINHA (tendência ao longo do tempo); pra "por
+// cliente" (eixo nominal, sem ordem natural), os dois painéis são barra
+// — uma linha ligando clientes sem ordem sugeriria uma tendência que não
+// existe. ========
+function PainelIndicador({ titulo, labels, valoresOperacoes, valoresTempo, tipoTempo }) {
+  const semDados = labels.length === 0;
+  return (
+    <div style={styles.painelCard}>
+      <div style={styles.painelHeader}>
+        <h4 style={styles.graficoTitulo}>{titulo}</h4>
+        <div style={styles.painelLegenda}>
+          <span style={styles.legendaItem}>
+            <span style={{ ...styles.legendaSwatch, background: COR_OPERACOES }} /> Operações
+          </span>
+          <span style={styles.legendaItem}>
+            <span style={{ ...styles.legendaSwatch, background: COR_TEMPO }} /> Tempo médio
+          </span>
+        </div>
+      </div>
+      {semDados ? (
+        <p style={{ ...ui.placeholderNote, margin: '8px 0 0' }}>Sem dados suficientes ainda.</p>
+      ) : (
+        <>
+          <ChartCanvas
+            tipo="bar"
+            altura={90}
+            dados={{
+              labels,
+              datasets: [
+                {
+                  label: 'Operações',
+                  data: valoresOperacoes,
+                  backgroundColor: COR_OPERACOES,
+                  borderRadius: 4,
+                  maxBarThickness: 24
+                }
+              ]
+            }}
+            opcoes={{
+              scales: {
+                x: { display: false, grid: { display: false } },
+                y: OPCOES_EIXO_Y_BASE
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (ctx) => ` ${ctx.parsed.y} operação(ões)` } }
+              }
+            }}
+          />
+          <div style={styles.painelDivisor} />
+          <ChartCanvas
+            tipo={tipoTempo}
+            altura={130}
+            dados={{
+              labels,
+              datasets: [
+                {
+                  label: 'Tempo médio (min)',
+                  data: valoresTempo,
+                  ...(tipoTempo === 'line'
+                    ? {
+                        borderColor: COR_TEMPO,
+                        backgroundColor: hexParaRgba(COR_TEMPO, 0.1),
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: COR_TEMPO,
+                        pointBorderColor: '#FFF',
+                        pointBorderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                      }
+                    : { backgroundColor: COR_TEMPO, borderRadius: 4, maxBarThickness: 24 })
+                }
+              ]
+            }}
+            opcoes={{
+              scales: {
+                x: { grid: { display: false }, ticks: { color: COR_INK_MUTED, font: { size: 10 } } },
+                y: OPCOES_EIXO_Y_BASE
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (ctx) => ` ${ctx.parsed.y} min` } }
+              }
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
 }
 
 const LOGO_ML_URL = `${process.env.PUBLIC_URL}/logos/logo-ml.png`;
@@ -542,86 +668,22 @@ export default function DashboardTab() {
             </div>
           </div>
           <div style={styles.graficosIndicadoresGrid}>
-            <div style={styles.graficoCard}>
-              <h4 style={styles.graficoTitulo}>Tempo médio por mês</h4>
-              <ChartCanvas
-                tipo="bar"
-                dados={{
-                  labels: indicadoresTempo.porMes.map((m) => labelMes(m.mes)),
-                  datasets: [
-                    {
-                      label: 'Tempo médio (min)',
-                      data: indicadoresTempo.porMes.map((m) => m.media),
-                      backgroundColor: CORES_CATEGORICAS[0],
-                      borderRadius: 4,
-                      maxBarThickness: 32
-                    }
-                  ]
-                }}
-              />
-            </div>
-            <div style={styles.graficoCard}>
-              <h4 style={styles.graficoTitulo}>Operações por mês</h4>
-              <ChartCanvas
-                tipo="bar"
-                dados={{
-                  labels: indicadoresTempo.porMes.map((m) => labelMes(m.mes)),
-                  datasets: [
-                    {
-                      label: 'Operações',
-                      data: indicadoresTempo.porMes.map((m) => m.qtd),
-                      backgroundColor: CORES_CATEGORICAS[1],
-                      borderRadius: 4,
-                      maxBarThickness: 32
-                    }
-                  ]
-                }}
-              />
-            </div>
-            <div style={styles.graficoCard}>
-              <h4 style={styles.graficoTitulo}>Tempo médio por cliente</h4>
-              <ChartCanvas
-                tipo="bar"
-                dados={{
-                  labels: indicadoresTempo.porCliente.map((c) =>
-                    c.clienteId === '_semCliente' ? '(sem cliente)' : nomeCliente(c.clienteId)
-                  ),
-                  datasets: [
-                    {
-                      label: 'Tempo médio (min)',
-                      data: indicadoresTempo.porCliente.map((c) => c.media),
-                      backgroundColor: indicadoresTempo.porCliente.map(
-                        (_, i) => CORES_CATEGORICAS[i % CORES_CATEGORICAS.length]
-                      ),
-                      borderRadius: 4,
-                      maxBarThickness: 32
-                    }
-                  ]
-                }}
-              />
-            </div>
-            <div style={styles.graficoCard}>
-              <h4 style={styles.graficoTitulo}>Operações por cliente</h4>
-              <ChartCanvas
-                tipo="bar"
-                dados={{
-                  labels: indicadoresTempo.porCliente.map((c) =>
-                    c.clienteId === '_semCliente' ? '(sem cliente)' : nomeCliente(c.clienteId)
-                  ),
-                  datasets: [
-                    {
-                      label: 'Operações',
-                      data: indicadoresTempo.porCliente.map((c) => c.qtd),
-                      backgroundColor: indicadoresTempo.porCliente.map(
-                        (_, i) => CORES_CATEGORICAS[i % CORES_CATEGORICAS.length]
-                      ),
-                      borderRadius: 4,
-                      maxBarThickness: 32
-                    }
-                  ]
-                }}
-              />
-            </div>
+            <PainelIndicador
+              titulo="Por mês"
+              labels={indicadoresTempo.porMes.map((m) => labelMes(m.mes))}
+              valoresOperacoes={indicadoresTempo.porMes.map((m) => m.qtd)}
+              valoresTempo={indicadoresTempo.porMes.map((m) => m.media)}
+              tipoTempo="line"
+            />
+            <PainelIndicador
+              titulo="Por cliente"
+              labels={indicadoresTempo.porCliente.map((c) =>
+                c.clienteId === '_semCliente' ? '(sem cliente)' : nomeCliente(c.clienteId)
+              )}
+              valoresOperacoes={indicadoresTempo.porCliente.map((c) => c.qtd)}
+              valoresTempo={indicadoresTempo.porCliente.map((c) => c.media)}
+              tipoTempo="bar"
+            />
           </div>
         </>
       )}
@@ -841,18 +903,34 @@ const styles = {
 
   graficosIndicadoresGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
     gap: 16,
     marginTop: 14
   },
-  graficoCard: {
+  painelCard: {
     background: '#FFF',
     borderRadius: 10,
     border: '1px solid #E5E5E5',
     padding: 14,
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
   },
-  graficoTitulo: { margin: '0 0 8px', fontSize: 13, color: NAVY },
+  painelHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4
+  },
+  painelLegenda: { display: 'flex', gap: 14 },
+  legendaItem: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#666', fontWeight: 600 },
+  legendaSwatch: { width: 8, height: 8, borderRadius: 2, display: 'inline-block' },
+  // Divisória fina entre os 2 mini-gráficos empilhados de um mesmo painel —
+  // não é borda em volta de uma marca (isso a skill dataviz proíbe), é um
+  // separador entre 2 PAINÉIS sincronizados no mesmo eixo X, convenção comum
+  // em dashboards (ex: preço em cima, volume embaixo).
+  painelDivisor: { height: 1, background: COR_GRADE, margin: '0 4px' },
+  graficoTitulo: { margin: 0, fontSize: 13, color: NAVY },
 
   overlay: {
     position: 'fixed',

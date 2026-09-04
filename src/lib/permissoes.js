@@ -42,7 +42,10 @@ export function permissoesVazias() {
   SECOES_CADASTRO.forEach((s) => {
     cadastros[s.id] = { visualizar: false, criar: false, editar: false, deletar: false };
   });
-  return { abas: { dashboard: true, cadastros: false, coletor: false, planejamento: false, relatorios: false }, cadastros };
+  return {
+    abas: { dashboard: true, cadastros: false, coletor: false, planejamento: false, relatorios: false, autorizacoes: false },
+    cadastros
+  };
 }
 
 export function permissoesTotais() {
@@ -50,7 +53,10 @@ export function permissoesTotais() {
   SECOES_CADASTRO.forEach((s) => {
     cadastros[s.id] = { visualizar: true, criar: true, editar: true, deletar: true };
   });
-  return { abas: { dashboard: true, cadastros: true, coletor: true, planejamento: true, relatorios: true }, cadastros };
+  return {
+    abas: { dashboard: true, cadastros: true, coletor: true, planejamento: true, relatorios: true, autorizacoes: true },
+    cadastros
+  };
 }
 
 // Perfil "de fábrica": sempre existe, mesmo sem nenhum dado no Firestore

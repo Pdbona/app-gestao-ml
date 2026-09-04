@@ -65,13 +65,21 @@ export default function PermissoesMatrix({ value, onChange }) {
           />{' '}
           Planejamento
         </label>
-        <label style={{ fontSize: 14 }}>
+        <label style={{ marginRight: 20, fontSize: 14 }}>
           <input
             type="checkbox"
             checked={Boolean(value.abas?.relatorios)}
             onChange={(e) => setAba('relatorios', e.target.checked)}
           />{' '}
           Relatórios
+        </label>
+        <label style={{ fontSize: 14 }}>
+          <input
+            type="checkbox"
+            checked={Boolean(value.abas?.autorizacoes)}
+            onChange={(e) => setAba('autorizacoes', e.target.checked)}
+          />{' '}
+          Autorizações
         </label>
         <div style={{ fontSize: 12, color: '#777', marginTop: 4 }}>
           Se "Coletor" for a única aba marcada, o login já leva direto pra tela do Coletor.

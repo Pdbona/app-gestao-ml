@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { db, storage } from '../firebase';
-import { collection, doc, getDoc, getDocs, query, where, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
 import { NAVY, ORANGE } from '../lib/styles';
 import { normalizarCpf, validarCpf, formatarCpf } from '../lib/cpf';
 import { capturarGeolocalizacao, distanciaMetros, TOLERANCIA_GEO_METROS } from '../lib/geo';
 import { obterConfigSelfie } from '../lib/limpezaSelfies';
-import { hojeISO } from '../lib/data';
+import { hojeISO, statusJanelaTurno, minutosDesdeInicioTurno } from '../lib/data';
 
 // Tela PÚBLICA (sem login) — aberta direto pelo QR Code fixado no
 // Cliente/Local (ver botão "Gerar QR Code" em ClientesCadastro.jsx e a
@@ -21,7 +21,7 @@ export default function CheckinPublicScreen({ clienteId }) {
   const [turnosDisponiveis, setTurnosDisponiveis] = useState([]);
   const [guardarSelfie, setGuardarSelfie] = useState(false);
 
-  const [etapa, setEtapa] = useState('cpf'); // cpf | turno | selfie | geo | sucesso
+  const [etapa, setEtapa] = useState('cpf'); // cpf | turno | selfie | geo | sucesso | bloqueado | aguardandoAutorizacao
   const [cpfDigitado, setCpfDigitado] = useState('');
   const [colaborador, setColaborador] = useState(null);
   const [turnoId, setTurnoId] = useState('');
@@ -29,6 +29,12 @@ export default function CheckinPublicScreen({ clienteId }) {
   const [capturandoGeo, setCapturandoGeo] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+  const [verificandoCpf, setVerificandoCpf] = useState(false);
+  const [mensagemBloqueio, setMensagemBloqueio] = useState('');
+  // Guarda o id da solicitação de presença em atraso já aprovada, pra poder
+  // marcar `consumidaEm` nela depois que a presença for gravada com sucesso
+  // (evita que a mesma aprovação sirva pra uma 2ª presença no mesmo turno/dia).
+  const [solicitacaoAprovadaId, setSolicitacaoAprovadaId] = useState(null);
 
   const inputSelfieRef = useRef(null);
   const selfieUrl = useMemo(() => (selfie ? URL.createObjectURL(selfie) : null), [selfie]);
@@ -57,12 +63,22 @@ export default function CheckinPublicScreen({ clienteId }) {
         const turnosAtivos = turnosSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((t) => t.ativo !== false);
         const turnosPlanejadosHoje = turnosAtivos.filter((t) => turnoIdsPlanejados.includes(t.id));
 
+        // Sem nenhum turno planejado (ou o único planejado não bate com
+        // nenhum turno ativo cadastrado) — bloqueia de vez. Antes disso
+        // caía num fallback que mostrava TODOS os turnos ativos do sistema,
+        // de qualquer cliente, o que deixava confirmar presença num turno
+        // sem relação nenhuma com o planejamento do dia.
+        if (turnosPlanejadosHoje.length === 0) {
+          if (!cancelado) setErroCarga('Não há operação planejada para hoje neste Cliente/Local.');
+          return;
+        }
+
         const configSelfie = await obterConfigSelfie();
 
         if (cancelado) return;
         setCliente(clienteData);
         setColaboradores(colabs);
-        setTurnosDisponiveis(turnosPlanejadosHoje.length > 0 ? turnosPlanejadosHoje : turnosAtivos);
+        setTurnosDisponiveis(turnosPlanejadosHoje);
         setGuardarSelfie(configSelfie.guardarSelfie);
       } catch (e) {
         if (!cancelado) setErroCarga('Falha ao carregar os dados. Verifique sua conexão e tente novamente.');
@@ -76,7 +92,11 @@ export default function CheckinPublicScreen({ clienteId }) {
     };
   }, [clienteId]);
 
-  const confirmarCpf = () => {
+  // Regra de janela de horário SÓ se aplica quando há exatamente 1 turno
+  // planejado pro dia (turno auto-selecionado) — com 2+ turnos planejados o
+  // colaborador escolhe manualmente na etapa 'turno', sem checagem nenhuma
+  // de horário (pedido explícito do Pablo).
+  const confirmarCpf = async () => {
     setErro('');
     const cpfLimpo = normalizarCpf(cpfDigitado);
     if (!validarCpf(cpfLimpo)) {
@@ -89,11 +109,87 @@ export default function CheckinPublicScreen({ clienteId }) {
       return;
     }
     setColaborador(encontrado);
-    if (turnosDisponiveis.length === 1) {
-      setTurnoId(turnosDisponiveis[0].id);
-      setEtapa('selfie');
-    } else {
+
+    if (turnosDisponiveis.length !== 1) {
       setEtapa('turno');
+      return;
+    }
+
+    const turno = turnosDisponiveis[0];
+    const solicitacaoId = `${encontrado.id}_${clienteId}_${turno.id}_${hojeISO()}`;
+
+    setVerificandoCpf(true);
+    try {
+      const solicitacaoSnap = await getDoc(doc(db, 'solicitacoesPresenca', solicitacaoId));
+      if (solicitacaoSnap.exists()) {
+        const solicitacao = solicitacaoSnap.data();
+        if (solicitacao.status === 'negada') {
+          setMensagemBloqueio('Sua solicitação de presença foi negada pela liderança. Fale com o Administrativo.');
+          setEtapa('bloqueado');
+          return;
+        }
+        if (solicitacao.status === 'aprovada' && !solicitacao.consumidaEm) {
+          setTurnoId(turno.id);
+          setSolicitacaoAprovadaId(solicitacaoId);
+          setEtapa('selfie');
+          return;
+        }
+        if (solicitacao.status === 'pendente') {
+          setEtapa('aguardandoAutorizacao');
+          return;
+        }
+        // status 'aprovada' mas já consumida (2ª tentativa depois de já ter
+        // gravado a presença) — cai no fluxo normal abaixo, que hoje tende
+        // a bloquear de novo por 'expirado'.
+      }
+
+      const statusJanela = statusJanelaTurno(turno.horaInicio);
+      if (statusJanela === 'antes') {
+        setMensagemBloqueio(
+          `O turno ${turno.nome} ainda não começou. Horário: ${turno.horaInicio}${
+            turno.horaFim ? ` às ${turno.horaFim}` : ''
+          }.`
+        );
+        setEtapa('bloqueado');
+        return;
+      }
+      if (statusJanela === 'expirado') {
+        setMensagemBloqueio('O prazo para confirmar presença neste turno expirou. Fale com o Administrativo.');
+        setEtapa('bloqueado');
+        return;
+      }
+      if (statusJanela === 'atraso') {
+        await setDoc(doc(db, 'solicitacoesPresenca', solicitacaoId), {
+          colaboradorId: encontrado.id,
+          colaboradorNome: encontrado.nome,
+          cpf: cpfLimpo,
+          clienteId,
+          clienteNome: cliente.nome,
+          turnoId: turno.id,
+          turnoNome: turno.nome,
+          horaInicioTurno: turno.horaInicio,
+          data: hojeISO(),
+          minutosAtraso: minutosDesdeInicioTurno(turno.horaInicio),
+          status: 'pendente',
+          solicitadoEm: serverTimestamp(),
+          resolvidoPor: null,
+          resolvidoPorNome: null,
+          resolvidoEm: null,
+          consumidaEm: null,
+          presencaId: null
+        });
+        setEtapa('aguardandoAutorizacao');
+        return;
+      }
+
+      // 'normal' ou 'sem_horario' (turno sem horaInicio cadastrado, não
+      // bloqueia por erro de cadastro) — segue o fluxo já existente.
+      setTurnoId(turno.id);
+      setEtapa('selfie');
+    } catch (e) {
+      setErro('Falha ao verificar o turno. Verifique sua conexão e tente novamente.');
+    } finally {
+      setVerificandoCpf(false);
     }
   };
 
@@ -167,6 +263,15 @@ export default function CheckinPublicScreen({ clienteId }) {
         distanciaMetros: Math.round(distancia),
         fotoPath
       });
+      // Se essa presença só foi possível porque a liderança aprovou uma
+      // solicitação de atraso, marca a solicitação como consumida — best
+      // effort, não trava a tela de sucesso por causa disso.
+      if (solicitacaoAprovadaId) {
+        updateDoc(doc(db, 'solicitacoesPresenca', solicitacaoAprovadaId), {
+          consumidaEm: serverTimestamp(),
+          presencaId: novoDocRef.id
+        }).catch(() => {});
+      }
       setEtapa('sucesso');
     } catch (e) {
       setErro('Falha ao gravar a presença. Verifique sua conexão e tente novamente.');
@@ -218,8 +323,8 @@ export default function CheckinPublicScreen({ clienteId }) {
               />
             </label>
             {erro && <div style={styles.erroTexto}>❌ {erro}</div>}
-            <button style={styles.botaoGrande} onClick={confirmarCpf}>
-              Continuar
+            <button style={styles.botaoGrande} onClick={confirmarCpf} disabled={verificandoCpf}>
+              {verificandoCpf ? 'Verificando...' : 'Continuar'}
             </button>
           </>
         )}
@@ -289,6 +394,22 @@ export default function CheckinPublicScreen({ clienteId }) {
               Presença confirmada, {colaborador.nome}!
               <br />
               {cliente.nome} — {turnoNome(turnoId)}
+            </p>
+          </div>
+        )}
+
+        {etapa === 'bloqueado' && (
+          <div style={styles.sucesso}>
+            <p style={styles.sucessoIcone}>❌</p>
+            <p style={{ ...styles.sucessoTexto, color: '#D32F2F' }}>{mensagemBloqueio}</p>
+          </div>
+        )}
+
+        {etapa === 'aguardandoAutorizacao' && (
+          <div style={styles.sucesso}>
+            <p style={styles.sucessoIcone}>⏳</p>
+            <p style={styles.sucessoTexto}>
+              Solicitação de presença em atraso enviada, aguarde 10min para liberação pela liderança!
             </p>
           </div>
         )}

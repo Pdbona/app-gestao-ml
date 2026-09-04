@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { ui, NAVY } from '../lib/styles';
-import { hojeISO, addDiasISO, datasNoIntervalo, formatarDataBr } from '../lib/data';
+import { hojeISO, addDiasISO, datasNoIntervalo, formatarDataBr, quinzenaAtual } from '../lib/data';
+import { formatarCpf } from '../lib/cpf';
 import {
   filtrarRegistros,
   filtrarPlanejamentos,
@@ -10,9 +11,10 @@ import {
   operacoesPorDia,
   agruparPorId,
   absenteismoPorDia,
+  presencasPorDia,
   resumoPeriodo
 } from '../lib/relatorio';
-import { gerarRelatorioPdf } from '../lib/relatorioPdf';
+import { gerarRelatorioPdf, gerarRelatorioPresencaPdf } from '../lib/relatorioPdf';
 import { obterLogoMlBase64 } from '../lib/logoAssets';
 import ChartCanvas, { CORES_CATEGORICAS, COR_STATUS_BOM } from './ChartCanvas';
 
@@ -26,6 +28,7 @@ export default function RelatoriosScreen() {
   const [clientes, setClientes] = useState([]);
   const [tiposOperacao, setTiposOperacao] = useState([]);
   const [fluxos, setFluxos] = useState([]);
+  const [turnos, setTurnos] = useState([]);
   const [registros, setRegistros] = useState([]);
   const [planejamentos, setPlanejamentos] = useState([]);
   const [presencas, setPresencas] = useState([]);
@@ -36,6 +39,16 @@ export default function RelatoriosScreen() {
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [erro, setErro] = useState('');
 
+  // Período do relatório de presença é INDEPENDENTE do período operacional
+  // acima (não muda o default de 30 dias das 4 seções já existentes) —
+  // default = quinzena fixa do calendário, ciclo de cobrança da ML, com os
+  // campos de data livres pra escolher outro período.
+  const quinzena = useMemo(() => quinzenaAtual(hojeISO()), []);
+  const [dataInicioPresenca, setDataInicioPresenca] = useState(quinzena.inicio);
+  const [dataFimPresenca, setDataFimPresenca] = useState(quinzena.fim);
+  const [gerandoPdfPresenca, setGerandoPdfPresenca] = useState(false);
+  const [erroPresenca, setErroPresenca] = useState('');
+
   const chartsRef = useRef({});
 
   useEffect(() => {
@@ -43,6 +56,7 @@ export default function RelatoriosScreen() {
       onSnapshot(collection(db, 'clientes'), (snap) => setClientes(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
       onSnapshot(collection(db, 'tiposOperacao'), (snap) => setTiposOperacao(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
       onSnapshot(collection(db, 'fluxos'), (snap) => setFluxos(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, 'turnos'), (snap) => setTurnos(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
       onSnapshot(collection(db, 'registrosOperacao'), (snap) => setRegistros(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
       onSnapshot(collection(db, 'planejamentoOperacional'), (snap) =>
         setPlanejamentos(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
@@ -55,6 +69,7 @@ export default function RelatoriosScreen() {
   const cliente = clientes.find((c) => c.id === clienteId);
   const nomeTipo = (id) => tiposOperacao.find((t) => t.id === id)?.nome;
   const nomeFluxo = (id) => fluxos.find((f) => f.id === id)?.nome;
+  const nomeTurno = (id) => turnos.find((t) => t.id === id)?.nome;
 
   const datasPeriodo = useMemo(() => datasNoIntervalo(dataInicio, dataFim), [dataInicio, dataFim]);
 
@@ -87,6 +102,23 @@ export default function RelatoriosScreen() {
   const dadosAbsenteismo = useMemo(
     () => absenteismoPorDia(planejamentosFiltrados, presencasFiltradas, datasPeriodo),
     [planejamentosFiltrados, presencasFiltradas, datasPeriodo]
+  );
+
+  const datasPresenca = useMemo(
+    () => datasNoIntervalo(dataInicioPresenca, dataFimPresenca),
+    [dataInicioPresenca, dataFimPresenca]
+  );
+  const presencasFiltradasPeriodo = useMemo(
+    () => (clienteId ? filtrarPresencas(presencas, clienteId, dataInicioPresenca, dataFimPresenca) : []),
+    [presencas, clienteId, dataInicioPresenca, dataFimPresenca]
+  );
+  const presencasComTurno = useMemo(
+    () => presencasFiltradasPeriodo.map((p) => ({ ...p, turnoNome: nomeTurno(p.turnoId) })),
+    [presencasFiltradasPeriodo, turnos] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const listaPresencaPorDia = useMemo(
+    () => presencasPorDia(presencasComTurno, datasPresenca),
+    [presencasComTurno, datasPresenca]
   );
 
   const labelsDias = datasPeriodo.map((d) => formatarDataBr(d).slice(0, 5));
@@ -159,6 +191,27 @@ export default function RelatoriosScreen() {
       setErro('Falha ao gerar o PDF. Tente novamente.');
     } finally {
       setGerandoPdf(false);
+    }
+  };
+
+  const gerarPdfPresenca = async () => {
+    if (!clienteId) return;
+    setGerandoPdfPresenca(true);
+    setErroPresenca('');
+    try {
+      const logoMlBase64 = await obterLogoMlBase64();
+      gerarRelatorioPresencaPdf({
+        clienteNome: cliente?.nome || 'Cliente',
+        dataInicio: dataInicioPresenca,
+        dataFim: dataFimPresenca,
+        presencasPorDiaLista: listaPresencaPorDia,
+        logoMlBase64,
+        logoClienteBase64: cliente?.logoBase64 || null
+      });
+    } catch (e) {
+      setErroPresenca('Falha ao gerar o PDF. Tente novamente.');
+    } finally {
+      setGerandoPdfPresenca(false);
     }
   };
 
@@ -256,6 +309,80 @@ export default function RelatoriosScreen() {
           <button style={{ ...ui.primaryButton, marginTop: 20 }} onClick={gerarPdf} disabled={gerandoPdf}>
             {gerandoPdf ? 'Gerando...' : '📄 Gerar PDF do relatório'}
           </button>
+
+          <h3 style={{ ...ui.sectionTitle, marginTop: 36 }}>Presenças confirmadas</h3>
+          <p style={ui.placeholderNote}>
+            Lista de quem confirmou presença por dia — pro cliente conferir. Período padrão é a
+            quinzena corrente (ciclo de cobrança da ML), mas dá pra escolher outro período livremente.
+          </p>
+
+          <div style={ui.formGrid}>
+            <label style={ui.label}>
+              Data início
+              <input
+                type="date"
+                style={ui.input}
+                value={dataInicioPresenca}
+                max={dataFimPresenca}
+                onChange={(e) => setDataInicioPresenca(e.target.value)}
+              />
+            </label>
+            <label style={ui.label}>
+              Data fim
+              <input
+                type="date"
+                style={ui.input}
+                value={dataFimPresenca}
+                min={dataInicioPresenca}
+                onChange={(e) => setDataFimPresenca(e.target.value)}
+              />
+            </label>
+          </div>
+
+          {listaPresencaPorDia.length === 0 ? (
+            <p style={ui.placeholderNote}>Nenhuma presença confirmada no período.</p>
+          ) : (
+            listaPresencaPorDia.map((grupo) => (
+              <div key={grupo.data} style={{ marginBottom: 20 }}>
+                <h4 style={styles.diaTitulo}>{formatarDataBr(grupo.data)}</h4>
+                <div style={ui.tableWrapper}>
+                  <table style={ui.table}>
+                    <thead>
+                      <tr>
+                        <th style={ui.th}>Colaborador</th>
+                        <th style={ui.th}>CPF</th>
+                        <th style={ui.th}>Turno</th>
+                        <th style={ui.th}>Horário do check-in</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grupo.itens.map((item) => (
+                        <tr key={item.id}>
+                          <td style={ui.td}>{item.colaboradorNome}</td>
+                          <td style={ui.td}>{formatarCpf(item.cpf)}</td>
+                          <td style={ui.td}>{item.turnoNome || '(turno removido)'}</td>
+                          <td style={ui.td}>
+                            {item.dataHoraCheckin?.toMillis
+                              ? new Date(item.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : '--:--'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
+          )}
+
+          {erroPresenca && <div style={ui.erro}>❌ {erroPresenca}</div>}
+
+          <button style={ui.primaryButton} onClick={gerarPdfPresenca} disabled={gerandoPdfPresenca}>
+            {gerandoPdfPresenca ? 'Gerando...' : '📄 Gerar PDF da lista de presença'}
+          </button>
         </>
       )}
     </div>
@@ -275,5 +402,6 @@ const styles = {
     padding: 16,
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
   },
-  graficoTitulo: { margin: '0 0 10px', fontSize: 14, color: NAVY }
+  graficoTitulo: { margin: '0 0 10px', fontSize: 14, color: NAVY },
+  diaTitulo: { margin: '0 0 8px', fontSize: 14, color: NAVY }
 };

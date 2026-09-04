@@ -75,3 +75,48 @@ export function formatarHorario(valor) {
   if (!ms) return '--:--';
   return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
+
+// Minutos decorridos desde o horaInicio ("HH:mm", turno) até `agora` — mesma
+// técnica de parse já usada em DashboardTab.jsx (split(':') + setHours),
+// centralizada aqui pra não duplicar de novo. Negativo se o turno ainda não
+// começou. `null` se horaInicio não estiver cadastrado.
+export function minutosDesdeInicioTurno(horaInicio, agora = new Date()) {
+  if (!horaInicio) return null;
+  const [h, m] = horaInicio.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  const inicio = new Date(agora);
+  inicio.setHours(h, m, 0, 0);
+  return Math.round((agora.getTime() - inicio.getTime()) / 60000);
+}
+
+export const TOLERANCIA_JANELA_NORMAL_MINUTOS = 60;
+export const LIMITE_JANELA_ATRASO_MINUTOS = 180;
+
+// Classifica o momento do check-in em relação ao horaInicio do turno único
+// planejado pro dia: 'sem_horario' (turno sem horaInicio cadastrado, não
+// bloqueia por erro de cadastro) | 'antes' (turno ainda não começou) |
+// 'normal' (dentro da tolerância de 1h — segue direto) | 'atraso' (de 1h a
+// 3h — pede autorização da liderança) | 'expirado' (mais de 3h — bloqueia).
+export function statusJanelaTurno(horaInicio, agora = new Date()) {
+  const minutos = minutosDesdeInicioTurno(horaInicio, agora);
+  if (minutos == null) return 'sem_horario';
+  if (minutos < 0) return 'antes';
+  if (minutos <= TOLERANCIA_JANELA_NORMAL_MINUTOS) return 'normal';
+  if (minutos <= LIMITE_JANELA_ATRASO_MINUTOS) return 'atraso';
+  return 'expirado';
+}
+
+// { inicio, fim } (ISO) da quinzena corrente a partir de diaISO: dia 1-15 do
+// mês, ou dia 16-até o último dia do mês. Usada como período padrão do
+// relatório de presença (ciclo de cobrança quinzenal da ML).
+export function quinzenaAtual(diaISO = hojeISO()) {
+  const [anoStr, mesStr, diaStr] = diaISO.split('-');
+  const ano = Number(anoStr);
+  const mes = Number(mesStr); // 1-12
+  const dia = Number(diaStr);
+  if (dia <= 15) {
+    return { inicio: `${anoStr}-${mesStr}-01`, fim: `${anoStr}-${mesStr}-15` };
+  }
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  return { inicio: `${anoStr}-${mesStr}-16`, fim: `${anoStr}-${mesStr}-${String(ultimoDia).padStart(2, '0')}` };
+}

@@ -60,6 +60,21 @@ export function absenteismoPorDia(planejamentos, presencas, datas) {
   });
 }
 
+// [{ data, itens }] — presenças confirmadas agrupadas por dia, ordenadas
+// cronologicamente (dia e, dentro do dia, horário do check-in). Usada pelo
+// relatório de presença (lista pro cliente conferir) — tanto na tabela em
+// tela quanto no PDF, pra nunca divergir.
+export function presencasPorDia(presencas, datas) {
+  return datas
+    .map((data) => ({
+      data,
+      itens: presencas
+        .filter((p) => p.data === data)
+        .sort((a, b) => (paraMillis(a.dataHoraCheckin) || 0) - (paraMillis(b.dataHoraCheckin) || 0))
+    }))
+    .filter((grupo) => grupo.itens.length > 0);
+}
+
 export function resumoPeriodo(registros, planejamentos, presencas) {
   const totalOperacoes = registros.length;
   const totalPlanejado = planejamentos.reduce((soma, p) => soma + (Number(p.qtdMdo) || 0), 0);

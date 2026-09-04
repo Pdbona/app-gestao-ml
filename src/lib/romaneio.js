@@ -20,9 +20,32 @@ function formatarDataHora(valor) {
   return new Date(ms).toLocaleString('pt-BR');
 }
 
+// Descobre a proporção real (largura/altura) de uma imagem base64 —
+// necessário porque `docPdf.addImage` NÃO respeita proporção sozinho, ele
+// estica pra caber exatamente no w/h passado (foi isso que deixou a logo
+// do cliente distorcida quando ela não é quadrada).
+function carregarDimensoesImagem(base64) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ largura: img.naturalWidth, altura: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = base64;
+  });
+}
+
+// "object-fit: contain" manual — encaixa largura×altura dentro de um
+// quadrado `tamanho`, preservando a proporção (nunca estica).
+function encaixarProporcional(largura, altura, tamanho) {
+  if (!largura || !altura) return { w: tamanho, h: tamanho };
+  const escala = Math.min(tamanho / largura, tamanho / altura);
+  return { w: largura * escala, h: altura * escala };
+}
+
 // Exportado — reaproveitado por relatorioPdf.js pra manter o mesmo
-// cabeçalho (logos + faixa laranja) nos dois PDFs.
-export function adicionarCabecalho(docPdf, titulo, subtitulo, logoMlBase64, logoClienteBase64) {
+// cabeçalho (logos + faixa laranja) nos dois PDFs. Assíncrono porque
+// precisa carregar a imagem da logo do cliente antes de saber a
+// proporção certa pra desenhar (ver `carregarDimensoesImagem` acima).
+export async function adicionarCabecalho(docPdf, titulo, subtitulo, logoMlBase64, logoClienteBase64) {
   const margemEsquerda = 14;
   const margemDireita = 196;
   let y = 16;
@@ -36,7 +59,14 @@ export function adicionarCabecalho(docPdf, titulo, subtitulo, logoMlBase64, logo
   }
   if (logoClienteBase64) {
     try {
-      docPdf.addImage(logoClienteBase64, 'JPEG', margemDireita - 22, 8, 22, 22);
+      const tamanho = 22;
+      const dim = await carregarDimensoesImagem(logoClienteBase64);
+      const { w, h } = encaixarProporcional(dim?.largura, dim?.altura, tamanho);
+      // Centralizado no mesmo "slot" de 22x22 que antes era ocupado à
+      // força — só o desenho agora respeita a proporção real da imagem.
+      const x = margemDireita - tamanho + (tamanho - w) / 2;
+      const yImg = 8 + (tamanho - h) / 2;
+      docPdf.addImage(logoClienteBase64, 'JPEG', x, yImg, w, h);
     } catch (e) {
       // idem
     }
@@ -100,7 +130,7 @@ function adicionarGradeFotos(docPdf, titulo, fotos, yInicial) {
   return y + alturaFoto + 10;
 }
 
-export function gerarRomaneioPdf({
+export async function gerarRomaneioPdf({
   clienteNome,
   tipoNome,
   fluxoNome,
@@ -120,7 +150,7 @@ export function gerarRomaneioPdf({
   const docPdf = new jsPDF();
   const margemEsquerda = 14;
 
-  let y = adicionarCabecalho(docPdf, 'Romaneio de Operação', clienteNome, logoMlBase64, logoClienteBase64);
+  let y = await adicionarCabecalho(docPdf, 'Romaneio de Operação', clienteNome, logoMlBase64, logoClienteBase64);
 
   const linha = (rotulo, valor) => {
     docPdf.setFont(undefined, 'bold');

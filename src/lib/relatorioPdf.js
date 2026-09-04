@@ -4,6 +4,7 @@
 import { jsPDF } from 'jspdf';
 import { adicionarCabecalho, NAVY } from './romaneio';
 import { formatarDataBr } from './data';
+import { formatarCpf } from './cpf';
 
 function adicionarGrafico(docPdf, titulo, dataUrlImagem, y) {
   const margemEsquerda = 14;
@@ -30,7 +31,7 @@ function adicionarGrafico(docPdf, titulo, dataUrlImagem, y) {
   return y + altura + 10;
 }
 
-export function gerarRelatorioPdf({
+export async function gerarRelatorioPdf({
   clienteNome,
   dataInicio,
   dataFim,
@@ -42,7 +43,7 @@ export function gerarRelatorioPdf({
   const docPdf = new jsPDF();
   const margemEsquerda = 14;
 
-  let y = adicionarCabecalho(
+  let y = await adicionarCabecalho(
     docPdf,
     'Relatório Operacional',
     `${clienteNome} — ${formatarDataBr(dataInicio)} a ${formatarDataBr(dataFim)}`,
@@ -71,66 +72,96 @@ export function gerarRelatorioPdf({
   docPdf.save(nomeArquivo);
 }
 
-// PDF da lista de presença por dia (RelatoriosScreen.jsx, seção "Presenças
-// confirmadas") — pro cliente conferir quem confirmou presença no período.
-// Sem lib de tabela (o projeto não usa jspdf-autotable em lugar nenhum):
-// desenha manualmente, um cabeçalho de dia em negrito seguido das linhas,
-// com a mesma paginação manual já usada no resto do arquivo.
-export function gerarRelatorioPresencaPdf({
-  clienteNome,
-  dataInicio,
-  dataFim,
-  presencasPorDiaLista,
-  logoMlBase64,
-  logoClienteBase64
-}) {
+// Colunas da tabela de presença — Data / Nome Completo / CPF / Turno /
+// Hora de Presença, nessa ordem (pedido do Pablo). Larguras calibradas
+// pra caber tudo entre as margens de 14 e 196mm (A4 retrato).
+const COLUNAS_PRESENCA = [
+  { chave: 'data', rotulo: 'Data', x: 14, largura: 24 },
+  { chave: 'nome', rotulo: 'Nome Completo', x: 40, largura: 58 },
+  { chave: 'cpf', rotulo: 'CPF', x: 100, largura: 30 },
+  { chave: 'turno', rotulo: 'Turno', x: 132, largura: 28 },
+  { chave: 'hora', rotulo: 'Hora de Presença', x: 162, largura: 34 }
+];
+
+// Trunca com "…" se o texto não couber na largura da coluna — nunca deixa
+// o jsPDF simplesmente sobrepor a coluna seguinte (ele não faz isso
+// sozinho, ao contrário de HTML/CSS).
+function truncarParaLargura(docPdf, texto, larguraMax) {
+  const original = String(texto ?? '-');
+  if (docPdf.getTextWidth(original) <= larguraMax) return original;
+  let cortado = original;
+  while (cortado.length > 1 && docPdf.getTextWidth(`${cortado}…`) > larguraMax) {
+    cortado = cortado.slice(0, -1);
+  }
+  return `${cortado}…`;
+}
+
+function desenharCabecalhoTabela(docPdf, y) {
+  docPdf.setFont(undefined, 'bold');
+  docPdf.setFontSize(9);
+  docPdf.setTextColor(NAVY);
+  COLUNAS_PRESENCA.forEach((c) => docPdf.text(c.rotulo, c.x, y));
+  docPdf.setDrawColor('#CCCCCC');
+  docPdf.setLineWidth(0.2);
+  docPdf.line(14, y + 2, 196, y + 2);
+  docPdf.setTextColor('#000000');
+  docPdf.setDrawColor('#000000');
+  docPdf.setFont(undefined, 'normal');
+  return y + 8;
+}
+
+// PDF da lista de presença (RelatoriosScreen.jsx, seção "Presenças
+// confirmadas") — pro cliente conferir quem confirmou presença no
+// período, em forma de tabela de verdade (cabeçalho de coluna + linhas
+// zebradas). Sem lib de tabela (o projeto não usa jspdf-autotable em
+// lugar nenhum) — desenhado manualmente, redesenhando o cabeçalho da
+// coluna sempre que vira página.
+export async function gerarRelatorioPresencaPdf({ clienteNome, dataInicio, dataFim, linhas, logoMlBase64, logoClienteBase64 }) {
   const docPdf = new jsPDF();
   const margemEsquerda = 14;
 
-  let y = adicionarCabecalho(
+  let y = await adicionarCabecalho(
     docPdf,
-    'Relatório de Presença',
+    'Lista de Presença',
     `${clienteNome} — ${formatarDataBr(dataInicio)} a ${formatarDataBr(dataFim)}`,
     logoMlBase64,
     logoClienteBase64
   );
 
-  if (presencasPorDiaLista.length === 0) {
-    docPdf.setFont(undefined, 'normal');
+  if (linhas.length === 0) {
     docPdf.setFontSize(11);
     docPdf.text('Nenhuma presença confirmada no período.', margemEsquerda, y);
+    docPdf.save(`lista-presenca-${(clienteNome || 'cliente').replace(/\W+/g, '-').toLowerCase()}-${dataInicio}-a-${dataFim}.pdf`);
+    return;
   }
 
-  presencasPorDiaLista.forEach((grupo) => {
-    if (y + 14 > 285) {
+  y = desenharCabecalhoTabela(docPdf, y);
+
+  linhas.forEach((linha, i) => {
+    if (y + 7 > 285) {
       docPdf.addPage();
       y = 20;
+      y = desenharCabecalhoTabela(docPdf, y);
     }
-    docPdf.setTextColor(NAVY);
-    docPdf.setFont(undefined, 'bold');
-    docPdf.setFontSize(12);
-    docPdf.text(formatarDataBr(grupo.data), margemEsquerda, y);
-    docPdf.setTextColor('#000000');
-    y += 7;
-
-    grupo.itens.forEach((item) => {
-      if (y + 7 > 285) {
-        docPdf.addPage();
-        y = 20;
-      }
-      docPdf.setFont(undefined, 'normal');
-      docPdf.setFontSize(10);
-      const horario = item.dataHoraCheckin?.toMillis
-        ? new Date(item.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-        : '--:--';
-      docPdf.text(item.colaboradorNome || '-', margemEsquerda, y);
-      docPdf.text(item.turnoNome || '-', margemEsquerda + 80, y);
-      docPdf.text(horario, margemEsquerda + 140, y);
-      y += 7;
-    });
-    y += 4;
+    if (i % 2 === 1) {
+      docPdf.setFillColor('#F7F8FA');
+      docPdf.rect(margemEsquerda, y - 4.2, 182, 6.2, 'F');
+    }
+    docPdf.setFontSize(9);
+    docPdf.text(truncarParaLargura(docPdf, formatarDataBr(linha.data), 22), 14, y);
+    docPdf.text(truncarParaLargura(docPdf, linha.colaboradorNome, 56), 40, y);
+    docPdf.text(truncarParaLargura(docPdf, formatarCpf(linha.cpf), 28), 100, y);
+    docPdf.text(truncarParaLargura(docPdf, linha.turnoNome, 26), 132, y);
+    docPdf.text(
+      linha.dataHoraCheckin?.toMillis
+        ? new Date(linha.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        : '--:--',
+      162,
+      y
+    );
+    y += 6.5;
   });
 
-  const nomeArquivo = `presenca-${(clienteNome || 'cliente').replace(/\W+/g, '-').toLowerCase()}-${dataInicio}-a-${dataFim}.pdf`;
+  const nomeArquivo = `lista-presenca-${(clienteNome || 'cliente').replace(/\W+/g, '-').toLowerCase()}-${dataInicio}-a-${dataFim}.pdf`;
   docPdf.save(nomeArquivo);
 }

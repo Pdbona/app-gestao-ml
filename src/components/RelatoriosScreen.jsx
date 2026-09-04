@@ -11,7 +11,7 @@ import {
   operacoesPorDia,
   agruparPorId,
   absenteismoPorDia,
-  presencasPorDia,
+  presencasParaTabela,
   resumoPeriodo
 } from '../lib/relatorio';
 import { gerarRelatorioPdf, gerarRelatorioPresencaPdf } from '../lib/relatorioPdf';
@@ -19,6 +19,7 @@ import { obterLogoMlBase64 } from '../lib/logoAssets';
 import ChartCanvas, { CORES_CATEGORICAS, COR_STATUS_BOM } from './ChartCanvas';
 
 const PERIODO_PADRAO_DIAS = 30;
+const LOGO_ML_URL = `${process.env.PUBLIC_URL}/logos/logo-ml.png`;
 
 // Tela do Administrativo pra "olhar pra trás": escolhe um Cliente/Local +
 // um período (a Dashboard, por pedido do Pablo, fica só com o dia
@@ -48,6 +49,11 @@ export default function RelatoriosScreen() {
   const [dataFimPresenca, setDataFimPresenca] = useState(quinzena.fim);
   const [gerandoPdfPresenca, setGerandoPdfPresenca] = useState(false);
   const [erroPresenca, setErroPresenca] = useState('');
+  // Pedido do Pablo: "quando gerar, primeiro me demonstre na tela e
+  // depois opção pra gerar o PDF" — mesmo padrão já usado no romaneio do
+  // Dashboard (abre uma prévia em modal, o PDF de verdade só é gerado se
+  // clicar em "Baixar PDF" lá dentro).
+  const [modalListaPresenca, setModalListaPresenca] = useState(false);
 
   const chartsRef = useRef({});
 
@@ -69,7 +75,6 @@ export default function RelatoriosScreen() {
   const cliente = clientes.find((c) => c.id === clienteId);
   const nomeTipo = (id) => tiposOperacao.find((t) => t.id === id)?.nome;
   const nomeFluxo = (id) => fluxos.find((f) => f.id === id)?.nome;
-  const nomeTurno = (id) => turnos.find((t) => t.id === id)?.nome;
 
   const datasPeriodo = useMemo(() => datasNoIntervalo(dataInicio, dataFim), [dataInicio, dataFim]);
 
@@ -104,21 +109,15 @@ export default function RelatoriosScreen() {
     [planejamentosFiltrados, presencasFiltradas, datasPeriodo]
   );
 
-  const datasPresenca = useMemo(
-    () => datasNoIntervalo(dataInicioPresenca, dataFimPresenca),
-    [dataInicioPresenca, dataFimPresenca]
-  );
   const presencasFiltradasPeriodo = useMemo(
     () => (clienteId ? filtrarPresencas(presencas, clienteId, dataInicioPresenca, dataFimPresenca) : []),
     [presencas, clienteId, dataInicioPresenca, dataFimPresenca]
   );
-  const presencasComTurno = useMemo(
-    () => presencasFiltradasPeriodo.map((p) => ({ ...p, turnoNome: nomeTurno(p.turnoId) })),
-    [presencasFiltradasPeriodo, turnos] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-  const listaPresencaPorDia = useMemo(
-    () => presencasPorDia(presencasComTurno, datasPresenca),
-    [presencasComTurno, datasPresenca]
+  // Ordem pedida pelo Pablo: data crescente, turno (pelo horaInicio
+  // cadastrado), nome (alfabética) e hora de presença.
+  const linhasPresenca = useMemo(
+    () => presencasParaTabela(presencasFiltradasPeriodo, turnos),
+    [presencasFiltradasPeriodo, turnos]
   );
 
   const labelsDias = datasPeriodo.map((d) => formatarDataBr(d).slice(0, 5));
@@ -178,7 +177,7 @@ export default function RelatoriosScreen() {
         porFluxo: chartsRef.current.porFluxo?.canvas.toDataURL('image/png', 1.0),
         absenteismo: chartsRef.current.absenteismo?.canvas.toDataURL('image/png', 1.0)
       };
-      gerarRelatorioPdf({
+      await gerarRelatorioPdf({
         clienteNome: cliente?.nome || 'Cliente',
         dataInicio,
         dataFim,
@@ -195,16 +194,15 @@ export default function RelatoriosScreen() {
   };
 
   const gerarPdfPresenca = async () => {
-    if (!clienteId) return;
     setGerandoPdfPresenca(true);
     setErroPresenca('');
     try {
       const logoMlBase64 = await obterLogoMlBase64();
-      gerarRelatorioPresencaPdf({
+      await gerarRelatorioPresencaPdf({
         clienteNome: cliente?.nome || 'Cliente',
         dataInicio: dataInicioPresenca,
         dataFim: dataFimPresenca,
-        presencasPorDiaLista: listaPresencaPorDia,
+        linhas: linhasPresenca,
         logoMlBase64,
         logoClienteBase64: cliente?.logoBase64 || null
       });
@@ -339,51 +337,87 @@ export default function RelatoriosScreen() {
             </label>
           </div>
 
-          {listaPresencaPorDia.length === 0 ? (
-            <p style={ui.placeholderNote}>Nenhuma presença confirmada no período.</p>
-          ) : (
-            listaPresencaPorDia.map((grupo) => (
-              <div key={grupo.data} style={{ marginBottom: 20 }}>
-                <h4 style={styles.diaTitulo}>{formatarDataBr(grupo.data)}</h4>
-                <div style={ui.tableWrapper}>
-                  <table style={ui.table}>
-                    <thead>
-                      <tr>
-                        <th style={ui.th}>Colaborador</th>
-                        <th style={ui.th}>CPF</th>
-                        <th style={ui.th}>Turno</th>
-                        <th style={ui.th}>Horário do check-in</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {grupo.itens.map((item) => (
-                        <tr key={item.id}>
-                          <td style={ui.td}>{item.colaboradorNome}</td>
-                          <td style={ui.td}>{formatarCpf(item.cpf)}</td>
-                          <td style={ui.td}>{item.turnoNome || '(turno removido)'}</td>
-                          <td style={ui.td}>
-                            {item.dataHoraCheckin?.toMillis
-                              ? new Date(item.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })
-                              : '--:--'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))
-          )}
+          <p style={ui.placeholderNote}>
+            {linhasPresenca.length === 0
+              ? 'Nenhuma presença confirmada no período.'
+              : `${linhasPresenca.length} presença(s) confirmada(s) no período.`}
+          </p>
 
           {erroPresenca && <div style={ui.erro}>❌ {erroPresenca}</div>}
 
-          <button style={ui.primaryButton} onClick={gerarPdfPresenca} disabled={gerandoPdfPresenca}>
-            {gerandoPdfPresenca ? 'Gerando...' : '📄 Gerar PDF da lista de presença'}
+          <button
+            style={ui.primaryButton}
+            onClick={() => setModalListaPresenca(true)}
+            disabled={linhasPresenca.length === 0}
+          >
+            👁 Ver lista de presença
           </button>
         </>
+      )}
+
+      {modalListaPresenca && (
+        <div style={styles.overlay} onClick={() => setModalListaPresenca(false)}>
+          <div style={styles.modalLista} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.listaCabecalho}>
+              <img src={LOGO_ML_URL} alt="ML Serviços" style={styles.listaLogoMl} />
+              <div style={{ textAlign: 'center' }}>
+                <h3 style={{ margin: 0, color: NAVY }}>Lista de Presença</h3>
+                <p style={{ margin: '2px 0 0', fontSize: 13, color: '#666' }}>
+                  {cliente?.nome} — {formatarDataBr(dataInicioPresenca)} a {formatarDataBr(dataFimPresenca)}
+                </p>
+              </div>
+              {cliente?.logoBase64 ? (
+                <img src={cliente.logoBase64} alt="" style={styles.listaLogoCliente} />
+              ) : (
+                <div style={{ width: 44 }} />
+              )}
+            </div>
+            <div style={styles.listaOrange} />
+
+            <div style={ui.tableWrapper}>
+              <table style={ui.table}>
+                <thead>
+                  <tr>
+                    <th style={ui.th}>Data</th>
+                    <th style={ui.th}>Nome Completo</th>
+                    <th style={ui.th}>CPF</th>
+                    <th style={ui.th}>Turno</th>
+                    <th style={ui.th}>Hora de Presença</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {linhasPresenca.map((linha) => (
+                    <tr key={linha.id}>
+                      <td style={ui.td}>{formatarDataBr(linha.data)}</td>
+                      <td style={ui.td}>{linha.colaboradorNome}</td>
+                      <td style={ui.td}>{formatarCpf(linha.cpf)}</td>
+                      <td style={ui.td}>{linha.turnoNome}</td>
+                      <td style={ui.td}>
+                        {linha.dataHoraCheckin?.toMillis
+                          ? new Date(linha.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          : '--:--'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {erroPresenca && <div style={{ ...ui.erro, marginTop: 12 }}>❌ {erroPresenca}</div>}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button style={ui.primaryButton} onClick={gerarPdfPresenca} disabled={gerandoPdfPresenca}>
+                {gerandoPdfPresenca ? 'Gerando...' : '⬇️ Baixar PDF'}
+              </button>
+              <button style={ui.secondaryButton} onClick={() => setModalListaPresenca(false)}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -403,5 +437,35 @@ const styles = {
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
   },
   graficoTitulo: { margin: '0 0 10px', fontSize: 14, color: NAVY },
-  diaTitulo: { margin: '0 0 8px', fontSize: 14, color: NAVY }
+
+  // Modal de prévia da Lista de Presença — mesmo padrão visual do modal de
+  // romaneio em DashboardTab.jsx (overlay + card + cabeçalho com logos +
+  // faixa laranja), pra "demonstrar na tela" antes de gerar o PDF de
+  // verdade.
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000
+  },
+  modalLista: {
+    background: '#FFF',
+    borderRadius: 10,
+    padding: '24px 28px',
+    maxWidth: 720,
+    width: '94%',
+    maxHeight: '88vh',
+    overflowY: 'auto',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.25)'
+  },
+  listaCabecalho: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  listaLogoMl: { height: 36, width: 'auto' },
+  // object-fit: contain + fundo neutro — a logo do cliente nunca é
+  // esticada fora de proporção aqui (mesmo cuidado que o PDF agora tem
+  // via `encaixarProporcional` em lib/romaneio.js).
+  listaLogoCliente: { height: 44, width: 44, objectFit: 'contain', borderRadius: 6, background: '#FAFAFA' },
+  listaOrange: { height: 3, background: '#FF6B00', margin: '14px 0 18px', borderRadius: 2 }
 };

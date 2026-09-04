@@ -323,7 +323,7 @@ export default function DashboardTab() {
     setBaixandoPdf(true);
     try {
       const logoMlBase64 = await obterLogoMlBase64();
-      gerarRomaneioPdf({
+      await gerarRomaneioPdf({
         clienteNome: nomeCliente(op.clienteId),
         tipoNome: nomeTipo(op.tipoOperacaoId),
         fluxoNome: nomeFluxo(op.fluxoId),

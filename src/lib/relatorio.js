@@ -60,19 +60,33 @@ export function absenteismoPorDia(planejamentos, presencas, datas) {
   });
 }
 
-// [{ data, itens }] — presenças confirmadas agrupadas por dia, ordenadas
-// cronologicamente (dia e, dentro do dia, horário do check-in). Usada pelo
-// relatório de presença (lista pro cliente conferir) — tanto na tabela em
-// tela quanto no PDF, pra nunca divergir.
-export function presencasPorDia(presencas, datas) {
-  return datas
-    .map((data) => ({
-      data,
-      itens: presencas
-        .filter((p) => p.data === data)
-        .sort((a, b) => (paraMillis(a.dataHoraCheckin) || 0) - (paraMillis(b.dataHoraCheckin) || 0))
+// Lista PLANA de presenças confirmadas (uma linha por presença — Data,
+// Nome, CPF, Turno, Hora), ordenada por data crescente, depois turno
+// (pelo horaInicio cadastrado — mesma noção de "ordem do turno" já usada
+// em TurnosCadastro/PlanejamentoScreen, não alfabética, pra "Diurno" vir
+// antes de "Noturno" mesmo sem ser ordem alfabética), depois nome
+// (alfabética) e por fim hora de presença. Usada pelo relatório de
+// presença (lista pro cliente conferir) — a mesma função alimenta a
+// prévia em tela e o PDF, pra nunca divergir. Enriquecida com
+// `turnoNome`/`turnoHoraInicio` resolvidos, pra quem desenha a tabela não
+// precisar fazer o lookup de novo.
+export function presencasParaTabela(presencas, turnos) {
+  const turno = (id) => turnos.find((t) => t.id === id);
+  return presencas
+    .map((p) => ({
+      ...p,
+      turnoNome: turno(p.turnoId)?.nome || '(turno removido)',
+      // Sem horário cadastrado vai pro fim da lista, não pro começo.
+      turnoHoraInicio: turno(p.turnoId)?.horaInicio || '99:99'
     }))
-    .filter((grupo) => grupo.itens.length > 0);
+    .sort((a, b) => {
+      if (a.data !== b.data) return a.data < b.data ? -1 : 1;
+      if (a.turnoHoraInicio !== b.turnoHoraInicio) return a.turnoHoraInicio < b.turnoHoraInicio ? -1 : 1;
+      const nomeA = (a.colaboradorNome || '').toLowerCase();
+      const nomeB = (b.colaboradorNome || '').toLowerCase();
+      if (nomeA !== nomeB) return nomeA < nomeB ? -1 : 1;
+      return (paraMillis(a.dataHoraCheckin) || 0) - (paraMillis(b.dataHoraCheckin) || 0);
+    });
 }
 
 export function resumoPeriodo(registros, planejamentos, presencas) {

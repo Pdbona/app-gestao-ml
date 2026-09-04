@@ -250,6 +250,24 @@ export default function GestaoML() {
             </button>
           )}
 
+          {temPlanejamento && (
+            <button
+              onClick={() => setAbaAtual('planejamento')}
+              style={{ ...styles.sidebarButton, ...(abaAtual === 'planejamento' ? styles.sidebarButtonAtivo : {}) }}
+            >
+              🗓️ Planejamento
+            </button>
+          )}
+
+          {temRelatorios && (
+            <button
+              onClick={() => setAbaAtual('relatorios')}
+              style={{ ...styles.sidebarButton, ...(abaAtual === 'relatorios' ? styles.sidebarButtonAtivo : {}) }}
+            >
+              📈 Relatórios
+            </button>
+          )}
+
           {temCadastros && (
             <>
               <button
@@ -287,25 +305,7 @@ export default function GestaoML() {
               onClick={() => setAbaAtual('coletor')}
               style={{ ...styles.sidebarButton, ...(abaAtual === 'coletor' ? styles.sidebarButtonAtivo : {}) }}
             >
-              📷 Coletor
-            </button>
-          )}
-
-          {temPlanejamento && (
-            <button
-              onClick={() => setAbaAtual('planejamento')}
-              style={{ ...styles.sidebarButton, ...(abaAtual === 'planejamento' ? styles.sidebarButtonAtivo : {}) }}
-            >
-              🗓️ Planejamento
-            </button>
-          )}
-
-          {temRelatorios && (
-            <button
-              onClick={() => setAbaAtual('relatorios')}
-              style={{ ...styles.sidebarButton, ...(abaAtual === 'relatorios' ? styles.sidebarButtonAtivo : {}) }}
-            >
-              📈 Relatórios
+              📱 Coletor
             </button>
           )}
 

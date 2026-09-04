@@ -22,11 +22,12 @@ const TELAS = {
 // O item de 1º nível (Cliente/Perfil/Usuários/Operação) já vem escolhido
 // pela sidebar (`secaoAtualId`, controlado em GestaoML.jsx — ver
 // `montarNavegacaoCadastros`). Esta tela cuida do 2º nível quando o item é
-// um GRUPO: o grupo "operacao" (Tipo de Operação + Operação) é mostrado
-// lado a lado — Tipo de Operação é a tela principal, Operação vira um card
-// menor ao lado (a pedido do Pablo, já que os dois não têm mais vínculo
-// entre si no cadastro). Um futuro grupo sem esse tratamento especial cai
-// no fallback de sub-abas.
+// um GRUPO: o grupo "operacao" (Tipo de Operação + Operação + Turno) é
+// mostrado lado a lado — Tipo de Operação é a tela principal, Operação e
+// Turno viram cards menores empilhados ao lado (a pedido do Pablo — Turno
+// entrou nesse grupo depois, junto com Operação, já que nenhum dos dois tem
+// vínculo direto com Tipo de Operação no cadastro). Um futuro grupo sem
+// esse tratamento especial cai no fallback de sub-abas.
 export default function CadastrosScreen({ permissoes, secaoAtualId }) {
   const navegacao = montarNavegacaoCadastros(permissoes);
   const [subSecaoPorGrupo, setSubSecaoPorGrupo] = useState({});
@@ -51,7 +52,10 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
             <TiposOperacaoCadastro permissoes={permissoes} />
           </div>
         )}
-        {idsPresentes.includes('fluxos') && <FluxosCadastro permissoes={permissoes} compacto />}
+        <div style={styles.grupoOperacaoCol}>
+          {idsPresentes.includes('fluxos') && <FluxosCadastro permissoes={permissoes} compacto />}
+          {idsPresentes.includes('turnos') && <TurnosCadastro permissoes={permissoes} compacto />}
+        </div>
       </div>
     );
   }
@@ -86,6 +90,7 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
 
 const styles = {
   grupoOperacaoRow: { display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' },
+  grupoOperacaoCol: { display: 'flex', flexDirection: 'column', gap: 20 },
   subNav: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 },
   subNavButton: {
     padding: '6px 14px',

@@ -7,6 +7,13 @@ import { limparFotosOperacaoVencidas } from '../lib/limpezaFotosOperacao';
 import { gerarRomaneioPdf } from '../lib/romaneio';
 import { obterLogoMlBase64 } from '../lib/logoAssets';
 import { hojeISO, addDiasISO, labelDataCurta, paraMillis, ehMesmoDia, formatarHorario } from '../lib/data';
+import ChartCanvas, { CORES_CATEGORICAS } from './ChartCanvas';
+
+const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+function labelMes(chaveAnoMes) {
+  const [ano, mes] = chaveAnoMes.split('-');
+  return `${MESES_ABREV[Number(mes) - 1]}/${ano.slice(2)}`;
+}
 
 const LOGO_ML_URL = `${process.env.PUBLIC_URL}/logos/logo-ml.png`;
 
@@ -135,9 +142,19 @@ export default function DashboardTab() {
         if (!porCliente[chave]) porCliente[chave] = [];
         porCliente[chave].push(r);
       });
+    // Em andamento sempre primeiro (entre elas, início mais recente primeiro
+    // — pedido do Pablo); depois as finalizadas, por finalização mais
+    // recente primeiro.
+    const ordenarOperacoes = (a, b) => {
+      const aAndamento = !a.fim;
+      const bAndamento = !b.fim;
+      if (aAndamento !== bAndamento) return aAndamento ? -1 : 1;
+      if (aAndamento) return (paraMillis(b.inicio) || 0) - (paraMillis(a.inicio) || 0);
+      return (paraMillis(b.fim) || 0) - (paraMillis(a.fim) || 0);
+    };
     return Object.entries(porCliente)
       .map(([clienteId, itensBrutos]) => {
-        const itens = itensBrutos.sort((a, b) => (paraMillis(b.inicio) || 0) - (paraMillis(a.inicio) || 0));
+        const itens = itensBrutos.sort(ordenarOperacoes);
         const resumo = {
           totalOperacoes: itens.length,
           tempoTotalMinutos: itens.reduce((soma, op) => soma + (op.tempoRealMinutos || 0), 0),
@@ -274,7 +291,25 @@ export default function DashboardTab() {
         )
       );
 
-    return { mediaGeral, totalOperacoes: finalizadas.length, porCliente: porClienteLista };
+    const porMes = {};
+    finalizadas.forEach((r) => {
+      const ms = paraMillis(r.inicio);
+      if (!ms) return;
+      const d = new Date(ms);
+      const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!porMes[chave]) porMes[chave] = [];
+      porMes[chave].push(r.tempoRealMinutos);
+    });
+    const porMesLista = Object.entries(porMes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-6) // últimos 6 meses com dado, pra não lotar o gráfico com o tempo
+      .map(([mes, tempos]) => ({
+        mes,
+        media: Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length),
+        qtd: tempos.length
+      }));
+
+    return { mediaGeral, totalOperacoes: finalizadas.length, porCliente: porClienteLista, porMes: porMesLista };
   }, [registros]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const abrirModalFalta = (item, clienteId) => {
@@ -506,18 +541,87 @@ export default function DashboardTab() {
               <div style={ui.statLabel}>Operações finalizadas</div>
             </div>
           </div>
-          <div style={{ ...styles.cardsGrid7Dias, marginTop: 14 }}>
-            {indicadoresTempo.porCliente.map((ind) => (
-              <div key={ind.clienteId} style={styles.diaCard}>
-                <div style={styles.diaCardHeader}>
-                  {ind.clienteId === '_semCliente' ? '(sem cliente)' : nomeCliente(ind.clienteId)}
-                </div>
-                <div style={styles.diaCardItem}>
-                  <div style={styles.turnoQtd}>{ind.media}min</div>
-                  <div style={styles.diaCardTurno}>{ind.qtd} operação(ões)</div>
-                </div>
-              </div>
-            ))}
+          <div style={styles.graficosIndicadoresGrid}>
+            <div style={styles.graficoCard}>
+              <h4 style={styles.graficoTitulo}>Tempo médio por mês</h4>
+              <ChartCanvas
+                tipo="bar"
+                dados={{
+                  labels: indicadoresTempo.porMes.map((m) => labelMes(m.mes)),
+                  datasets: [
+                    {
+                      label: 'Tempo médio (min)',
+                      data: indicadoresTempo.porMes.map((m) => m.media),
+                      backgroundColor: CORES_CATEGORICAS[0],
+                      borderRadius: 4,
+                      maxBarThickness: 32
+                    }
+                  ]
+                }}
+              />
+            </div>
+            <div style={styles.graficoCard}>
+              <h4 style={styles.graficoTitulo}>Operações por mês</h4>
+              <ChartCanvas
+                tipo="bar"
+                dados={{
+                  labels: indicadoresTempo.porMes.map((m) => labelMes(m.mes)),
+                  datasets: [
+                    {
+                      label: 'Operações',
+                      data: indicadoresTempo.porMes.map((m) => m.qtd),
+                      backgroundColor: CORES_CATEGORICAS[1],
+                      borderRadius: 4,
+                      maxBarThickness: 32
+                    }
+                  ]
+                }}
+              />
+            </div>
+            <div style={styles.graficoCard}>
+              <h4 style={styles.graficoTitulo}>Tempo médio por cliente</h4>
+              <ChartCanvas
+                tipo="bar"
+                dados={{
+                  labels: indicadoresTempo.porCliente.map((c) =>
+                    c.clienteId === '_semCliente' ? '(sem cliente)' : nomeCliente(c.clienteId)
+                  ),
+                  datasets: [
+                    {
+                      label: 'Tempo médio (min)',
+                      data: indicadoresTempo.porCliente.map((c) => c.media),
+                      backgroundColor: indicadoresTempo.porCliente.map(
+                        (_, i) => CORES_CATEGORICAS[i % CORES_CATEGORICAS.length]
+                      ),
+                      borderRadius: 4,
+                      maxBarThickness: 32
+                    }
+                  ]
+                }}
+              />
+            </div>
+            <div style={styles.graficoCard}>
+              <h4 style={styles.graficoTitulo}>Operações por cliente</h4>
+              <ChartCanvas
+                tipo="bar"
+                dados={{
+                  labels: indicadoresTempo.porCliente.map((c) =>
+                    c.clienteId === '_semCliente' ? '(sem cliente)' : nomeCliente(c.clienteId)
+                  ),
+                  datasets: [
+                    {
+                      label: 'Operações',
+                      data: indicadoresTempo.porCliente.map((c) => c.qtd),
+                      backgroundColor: indicadoresTempo.porCliente.map(
+                        (_, i) => CORES_CATEGORICAS[i % CORES_CATEGORICAS.length]
+                      ),
+                      borderRadius: 4,
+                      maxBarThickness: 32
+                    }
+                  ]
+                }}
+              />
+            </div>
           </div>
         </>
       )}
@@ -658,9 +762,13 @@ export default function DashboardTab() {
 }
 
 const styles = {
+  // Largura MÁXIMA fixa (não 1fr) pra pedido do Pablo: card de Operações do
+  // dia/Presença do dia não deve esticar pra preencher a linha inteira
+  // quando tem só 1-2 clientes — fica sempre do tamanho equivalente a
+  // caberem uns 4 lado a lado, mesmo sobrando espaço vazio na linha.
   cardsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 300px))',
     gap: 16,
     marginBottom: 8
   },
@@ -730,6 +838,21 @@ const styles = {
   diaCardItem: { marginBottom: 6 },
   diaCardCliente: { fontSize: 12, fontWeight: 600, color: '#333' },
   diaCardTurno: { fontSize: 11, color: '#777' },
+
+  graficosIndicadoresGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+    gap: 16,
+    marginTop: 14
+  },
+  graficoCard: {
+    background: '#FFF',
+    borderRadius: 10,
+    border: '1px solid #E5E5E5',
+    padding: 14,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
+  },
+  graficoTitulo: { margin: '0 0 8px', fontSize: 13, color: NAVY },
 
   overlay: {
     position: 'fixed',

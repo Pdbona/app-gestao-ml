@@ -26,7 +26,7 @@ export const SECOES_CADASTRO = [
   { id: 'perfis', label: 'Perfil' },
   { id: 'usuarios', label: 'Usuários' },
   { id: 'colaboradores', label: 'Colaborador' },
-  { id: 'turnos', label: 'Turno' },
+  { id: 'turnos', label: 'Turno', grupo: 'operacao' },
   { id: 'tiposOperacao', label: 'Tipo de Operação', grupo: 'operacao' },
   { id: 'fluxos', label: 'Operação', grupo: 'operacao' }
 ];

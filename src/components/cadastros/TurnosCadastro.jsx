@@ -1,15 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { ui } from '../../lib/styles';
+import { ui, NAVY } from '../../lib/styles';
 
 const TURNO_VAZIO = { nome: '', horaInicio: '', horaFim: '', ativo: true };
 
 // Turno é cadastro global reutilizável (igual Tipo de Operação/Operação):
 // entra como seleção no Planejamento Operacional e no check-in de
 // presença. `horaInicio` é o que baliza o horário de corte pro alerta de
-// falta no Dashboard (tolerância fixa de 15min após o início do turno).
-export default function TurnosCadastro({ permissoes }) {
+// falta no Dashboard (tolerância fixa de 15min após o início do turno) e a
+// janela de autorização de presença em atraso do check-in.
+// `compacto` renderiza um card menor (mesmo padrão de FluxosCadastro.jsx)
+// — usado lado a lado com Tipo de Operação/Operação em CadastrosScreen.jsx,
+// já que Turno entrou no grupo "Operação" a pedido do Pablo.
+export default function TurnosCadastro({ permissoes, compacto = false }) {
   const perm = permissoes.cadastros?.turnos || {};
 
   const [turnos, setTurnos] = useState([]);
@@ -100,12 +104,12 @@ export default function TurnosCadastro({ permissoes }) {
   };
 
   return (
-    <div>
+    <div style={compacto ? styles.cardCompacto : undefined}>
       <div style={ui.sectionHeaderRow}>
-        <h2 style={ui.sectionTitle}>Turno</h2>
+        {compacto ? <h3 style={styles.tituloCompacto}>Turno</h3> : <h2 style={ui.sectionTitle}>Turno</h2>}
         {perm.criar && !formAberto && (
-          <button style={ui.primaryButton} onClick={abrirNovo}>
-            ➕ Novo turno
+          <button style={compacto ? ui.smallButton : ui.primaryButton} onClick={abrirNovo}>
+            ➕ {compacto ? 'Turno' : 'Novo turno'}
           </button>
         )}
       </div>
@@ -177,6 +181,34 @@ export default function TurnosCadastro({ permissoes }) {
         <p>Carregando turnos...</p>
       ) : turnos.length === 0 ? (
         <p style={ui.placeholderNote}>Nenhum turno cadastrado ainda.</p>
+      ) : compacto ? (
+        <div style={styles.listaCompacta}>
+          {turnos.map((t) => (
+            <div key={t.id} style={styles.itemCompacto}>
+              <div>
+                <strong>{t.nome}</strong>{' '}
+                <span style={{ ...ui.badge, ...(t.ativo !== false ? ui.badgeVerde : ui.badgeCinza) }}>
+                  {t.ativo !== false ? 'Ativo' : 'Inativo'}
+                </span>
+                <div style={styles.fotosCompacto}>
+                  🕐 início: {t.horaInicio || '-'} · fim: {t.horaFim || '-'}
+                </div>
+              </div>
+              <div>
+                {perm.editar && (
+                  <button style={ui.linkButton} onClick={() => abrirEdicao(t)}>
+                    Editar
+                  </button>
+                )}
+                {perm.deletar && (
+                  <button style={{ ...ui.linkButton, color: '#D32F2F' }} onClick={() => excluir(t)}>
+                    Excluir
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div style={ui.tableWrapper}>
           <table style={ui.table}>
@@ -221,3 +253,26 @@ export default function TurnosCadastro({ permissoes }) {
     </div>
   );
 }
+
+const styles = {
+  cardCompacto: {
+    background: '#FFF',
+    borderRadius: 8,
+    padding: 16,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+    width: '100%',
+    maxWidth: 340
+  },
+  tituloCompacto: { margin: '0 0 12px', fontSize: 15, color: NAVY },
+  listaCompacta: { display: 'flex', flexDirection: 'column', gap: 10 },
+  itemCompacto: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: '8px 0',
+    borderBottom: '1px solid #EEE',
+    fontSize: 13
+  },
+  fotosCompacto: { fontSize: 11, color: '#777', marginTop: 4 }
+};

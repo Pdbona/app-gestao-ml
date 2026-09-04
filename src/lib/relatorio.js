@@ -77,7 +77,8 @@ export function presencasParaTabela(presencas, turnos) {
       ...p,
       turnoNome: turno(p.turnoId)?.nome || '(turno removido)',
       // Sem horário cadastrado vai pro fim da lista, não pro começo.
-      turnoHoraInicio: turno(p.turnoId)?.horaInicio || '99:99'
+      turnoHoraInicio: turno(p.turnoId)?.horaInicio || '99:99',
+      turnoHoraFim: turno(p.turnoId)?.horaFim || null
     }))
     .sort((a, b) => {
       if (a.data !== b.data) return a.data < b.data ? -1 : 1;
@@ -87,6 +88,59 @@ export function presencasParaTabela(presencas, turnos) {
       if (nomeA !== nomeB) return nomeA < nomeB ? -1 : 1;
       return (paraMillis(a.dataHoraCheckin) || 0) - (paraMillis(b.dataHoraCheckin) || 0);
     });
+}
+
+// Recebe a lista já ordenada de `presencasParaTabela` e monta a estrutura
+// com subtotais pro relatório de presença (pedido do Pablo): agrupada por
+// dia e, dentro do dia, por turno — cada grupo de turno carrega quantas
+// pessoas confirmaram (`pessoas.length`) e o período do turno
+// (`turnoHoraInicio`/`turnoHoraFim`), cada dia carrega o subtotal do dia
+// (`subtotalDia`), e por fim o total geral do período inteiro
+// (`totalGeral`) e o total geral por turno somando todos os dias
+// (`totalPorTurno`, ordenado pelo horário de início do turno). Como
+// `linhas` já vem ordenada (data → turno → nome → hora), os `Map`
+// preservam essa ordem sozinhos — não precisa reordenar de novo aqui.
+export function agruparPresencasComSubtotais(linhas) {
+  const porDiaMap = new Map();
+  linhas.forEach((linha) => {
+    if (!porDiaMap.has(linha.data)) porDiaMap.set(linha.data, new Map());
+    const porTurnoMap = porDiaMap.get(linha.data);
+    if (!porTurnoMap.has(linha.turnoId)) {
+      porTurnoMap.set(linha.turnoId, {
+        turnoId: linha.turnoId,
+        turnoNome: linha.turnoNome,
+        turnoHoraInicio: linha.turnoHoraInicio,
+        turnoHoraFim: linha.turnoHoraFim,
+        pessoas: []
+      });
+    }
+    porTurnoMap.get(linha.turnoId).pessoas.push(linha);
+  });
+
+  const porDia = [...porDiaMap.entries()].map(([data, porTurnoMap]) => {
+    const porTurno = [...porTurnoMap.values()];
+    const subtotalDia = porTurno.reduce((soma, t) => soma + t.pessoas.length, 0);
+    return { data, porTurno, subtotalDia };
+  });
+
+  const totalPorTurnoMap = new Map();
+  linhas.forEach((linha) => {
+    if (!totalPorTurnoMap.has(linha.turnoId)) {
+      totalPorTurnoMap.set(linha.turnoId, {
+        turnoId: linha.turnoId,
+        turnoNome: linha.turnoNome,
+        turnoHoraInicio: linha.turnoHoraInicio,
+        turnoHoraFim: linha.turnoHoraFim,
+        subtotal: 0
+      });
+    }
+    totalPorTurnoMap.get(linha.turnoId).subtotal += 1;
+  });
+  const totalPorTurno = [...totalPorTurnoMap.values()].sort((a, b) =>
+    (a.turnoHoraInicio || '99:99').localeCompare(b.turnoHoraInicio || '99:99')
+  );
+
+  return { porDia, totalPorTurno, totalGeral: linhas.length };
 }
 
 export function resumoPeriodo(registros, planejamentos, presencas) {

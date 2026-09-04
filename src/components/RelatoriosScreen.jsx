@@ -12,6 +12,7 @@ import {
   agruparPorId,
   absenteismoPorDia,
   presencasParaTabela,
+  agruparPresencasComSubtotais,
   resumoPeriodo
 } from '../lib/relatorio';
 import { gerarRelatorioPdf, gerarRelatorioPresencaPdf } from '../lib/relatorioPdf';
@@ -75,6 +76,7 @@ export default function RelatoriosScreen() {
   const cliente = clientes.find((c) => c.id === clienteId);
   const nomeTipo = (id) => tiposOperacao.find((t) => t.id === id)?.nome;
   const nomeFluxo = (id) => fluxos.find((f) => f.id === id)?.nome;
+  const periodoTurno = (t) => `${t.turnoHoraInicio || '--:--'}${t.turnoHoraFim ? ` às ${t.turnoHoraFim}` : ''}`;
 
   const datasPeriodo = useMemo(() => datasNoIntervalo(dataInicio, dataFim), [dataInicio, dataFim]);
 
@@ -119,6 +121,10 @@ export default function RelatoriosScreen() {
     () => presencasParaTabela(presencasFiltradasPeriodo, turnos),
     [presencasFiltradasPeriodo, turnos]
   );
+  // Subtotal por turno (com o período do turno) e por dia, + total geral
+  // do período e total geral por turno — pedido do Pablo depois de ver a
+  // 1ª versão da lista.
+  const presencaAgrupada = useMemo(() => agruparPresencasComSubtotais(linhasPresenca), [linhasPresenca]);
 
   const labelsDias = datasPeriodo.map((d) => formatarDataBr(d).slice(0, 5));
 
@@ -202,7 +208,7 @@ export default function RelatoriosScreen() {
         clienteNome: cliente?.nome || 'Cliente',
         dataInicio: dataInicioPresenca,
         dataFim: dataFimPresenca,
-        linhas: linhasPresenca,
+        agrupado: presencaAgrupada,
         logoMlBase64,
         logoClienteBase64: cliente?.logoBase64 || null
       });
@@ -386,24 +392,58 @@ export default function RelatoriosScreen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {linhasPresenca.map((linha) => (
-                    <tr key={linha.id}>
-                      <td style={ui.td}>{formatarDataBr(linha.data)}</td>
-                      <td style={ui.td}>{linha.colaboradorNome}</td>
-                      <td style={ui.td}>{formatarCpf(linha.cpf)}</td>
-                      <td style={ui.td}>{linha.turnoNome}</td>
-                      <td style={ui.td}>
-                        {linha.dataHoraCheckin?.toMillis
-                          ? new Date(linha.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })
-                          : '--:--'}
-                      </td>
-                    </tr>
+                  {presencaAgrupada.porDia.map((dia) => (
+                    <React.Fragment key={dia.data}>
+                      {dia.porTurno.map((turno) => (
+                        <React.Fragment key={turno.turnoId}>
+                          {turno.pessoas.map((linha) => (
+                            <tr key={linha.id}>
+                              <td style={ui.td}>{formatarDataBr(linha.data)}</td>
+                              <td style={ui.td}>{linha.colaboradorNome}</td>
+                              <td style={ui.td}>{formatarCpf(linha.cpf)}</td>
+                              <td style={ui.td}>{linha.turnoNome}</td>
+                              <td style={ui.td}>
+                                {linha.dataHoraCheckin?.toMillis
+                                  ? new Date(linha.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })
+                                  : '--:--'}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr>
+                            <td colSpan={5} style={styles.linhaSubtotalTurno}>
+                              Subtotal {turno.turnoNome} ({periodoTurno(turno)}): {turno.pessoas.length} pessoa(s)
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      ))}
+                      <tr>
+                        <td colSpan={5} style={styles.linhaSubtotalDia}>
+                          Subtotal do dia {formatarDataBr(dia.data)}: {dia.subtotalDia} pessoa(s)
+                        </td>
+                      </tr>
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div style={styles.totaisGerais}>
+              <p style={styles.totalGeralTexto}>
+                Total geral no período: <strong>{presencaAgrupada.totalGeral} pessoa(s)</strong>
+              </p>
+              <p style={{ margin: '6px 0 4px', fontWeight: 700, color: NAVY, fontSize: 13 }}>
+                Total geral no período por turno:
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#333' }}>
+                {presencaAgrupada.totalPorTurno.map((t) => (
+                  <li key={t.turnoId}>
+                    {t.turnoNome} ({periodoTurno(t)}): {t.subtotal} pessoa(s)
+                  </li>
+                ))}
+              </ul>
             </div>
 
             {erroPresenca && <div style={{ ...ui.erro, marginTop: 12 }}>❌ {erroPresenca}</div>}
@@ -467,5 +507,33 @@ const styles = {
   // esticada fora de proporção aqui (mesmo cuidado que o PDF agora tem
   // via `encaixarProporcional` em lib/romaneio.js).
   listaLogoCliente: { height: 44, width: 44, objectFit: 'contain', borderRadius: 6, background: '#FAFAFA' },
-  listaOrange: { height: 3, background: '#FF6B00', margin: '14px 0 18px', borderRadius: 2 }
+  listaOrange: { height: 3, background: '#FF6B00', margin: '14px 0 18px', borderRadius: 2 },
+
+  // Linhas de subtotal (turno/dia) intercaladas na mesma tabela — mais
+  // claras que uma linha normal, texto em itálico, pra separar visualmente
+  // "gente confirmada" de "resumo calculado".
+  linhaSubtotalTurno: {
+    padding: '6px 16px',
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: '#666',
+    background: '#FBFBFB',
+    borderBottom: '1px solid #EEE'
+  },
+  linhaSubtotalDia: {
+    padding: '8px 16px',
+    fontSize: 13,
+    fontWeight: 700,
+    color: NAVY,
+    background: '#F0F3F7',
+    borderBottom: '2px solid #E5E5E5'
+  },
+  totaisGerais: {
+    marginTop: 18,
+    padding: '14px 16px',
+    background: '#F7F8FA',
+    borderRadius: 8,
+    border: '1px solid #E5E5E5'
+  },
+  totalGeralTexto: { margin: 0, fontSize: 14, color: NAVY }
 };

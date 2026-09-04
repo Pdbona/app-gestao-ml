@@ -110,13 +110,37 @@ function desenharCabecalhoTabela(docPdf, y) {
   return y + 8;
 }
 
+function periodoTurno(t) {
+  return `${t.turnoHoraInicio || '--:--'}${t.turnoHoraFim ? ` às ${t.turnoHoraFim}` : ''}`;
+}
+
+// Linha de subtotal (itálico, cinza) — turno dentro de um dia, ou o
+// subtotal do dia (negrito, cor NAVY). Quebra de página própria (o
+// cabeçalho da coluna não precisa ser redesenhado aqui, já que uma linha
+// de subtotal não é uma linha de dado — só o próximo dado redesenha).
+function desenharSubtotal(docPdf, texto, y, negrito) {
+  if (y + 7 > 285) {
+    docPdf.addPage();
+    y = 20;
+  }
+  docPdf.setFont(undefined, negrito ? 'bold' : 'italic');
+  docPdf.setFontSize(negrito ? 10 : 9);
+  docPdf.setTextColor(negrito ? NAVY : '#666666');
+  docPdf.text(texto, 14, y);
+  docPdf.setTextColor('#000000');
+  docPdf.setFont(undefined, 'normal');
+  return y + (negrito ? 8 : 6.5);
+}
+
 // PDF da lista de presença (RelatoriosScreen.jsx, seção "Presenças
 // confirmadas") — pro cliente conferir quem confirmou presença no
 // período, em forma de tabela de verdade (cabeçalho de coluna + linhas
-// zebradas). Sem lib de tabela (o projeto não usa jspdf-autotable em
-// lugar nenhum) — desenhado manualmente, redesenhando o cabeçalho da
-// coluna sempre que vira página.
-export async function gerarRelatorioPresencaPdf({ clienteNome, dataInicio, dataFim, linhas, logoMlBase64, logoClienteBase64 }) {
+// zebradas), com subtotal por turno (com o período do turno) e por dia,
+// e o total geral do período + total geral por turno no final. Sem lib
+// de tabela (o projeto não usa jspdf-autotable em lugar nenhum) —
+// desenhado manualmente, redesenhando o cabeçalho da coluna sempre que
+// vira página no meio dos dados.
+export async function gerarRelatorioPresencaPdf({ clienteNome, dataInicio, dataFim, agrupado, logoMlBase64, logoClienteBase64 }) {
   const docPdf = new jsPDF();
   const margemEsquerda = 14;
 
@@ -128,40 +152,86 @@ export async function gerarRelatorioPresencaPdf({ clienteNome, dataInicio, dataF
     logoClienteBase64
   );
 
-  if (linhas.length === 0) {
+  const nomeArquivo = `lista-presenca-${(clienteNome || 'cliente').replace(/\W+/g, '-').toLowerCase()}-${dataInicio}-a-${dataFim}.pdf`;
+
+  if (agrupado.totalGeral === 0) {
     docPdf.setFontSize(11);
     docPdf.text('Nenhuma presença confirmada no período.', margemEsquerda, y);
-    docPdf.save(`lista-presenca-${(clienteNome || 'cliente').replace(/\W+/g, '-').toLowerCase()}-${dataInicio}-a-${dataFim}.pdf`);
+    docPdf.save(nomeArquivo);
     return;
   }
 
   y = desenharCabecalhoTabela(docPdf, y);
+  let indiceZebra = 0;
 
-  linhas.forEach((linha, i) => {
-    if (y + 7 > 285) {
+  agrupado.porDia.forEach((dia) => {
+    dia.porTurno.forEach((turno) => {
+      turno.pessoas.forEach((linha) => {
+        if (y + 7 > 285) {
+          docPdf.addPage();
+          y = 20;
+          y = desenharCabecalhoTabela(docPdf, y);
+        }
+        if (indiceZebra % 2 === 1) {
+          docPdf.setFillColor('#F7F8FA');
+          docPdf.rect(margemEsquerda, y - 4.2, 182, 6.2, 'F');
+        }
+        indiceZebra += 1;
+        docPdf.setFontSize(9);
+        docPdf.text(truncarParaLargura(docPdf, formatarDataBr(linha.data), 22), 14, y);
+        docPdf.text(truncarParaLargura(docPdf, linha.colaboradorNome, 56), 40, y);
+        docPdf.text(truncarParaLargura(docPdf, formatarCpf(linha.cpf), 28), 100, y);
+        docPdf.text(truncarParaLargura(docPdf, linha.turnoNome, 26), 132, y);
+        docPdf.text(
+          linha.dataHoraCheckin?.toMillis
+            ? new Date(linha.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            : '--:--',
+          162,
+          y
+        );
+        y += 6.5;
+      });
+      y = desenharSubtotal(
+        docPdf,
+        `Subtotal ${turno.turnoNome} (${periodoTurno(turno)}): ${turno.pessoas.length} pessoa(s)`,
+        y,
+        false
+      );
+    });
+    y = desenharSubtotal(docPdf, `Subtotal do dia ${formatarDataBr(dia.data)}: ${dia.subtotalDia} pessoa(s)`, y, true);
+    y += 2;
+  });
+
+  // Totais gerais do período — sempre com uma linha separadora antes,
+  // pra não parecer só mais um subtotal de dia.
+  if (y + 24 > 285) {
+    docPdf.addPage();
+    y = 20;
+  }
+  docPdf.setDrawColor('#CCCCCC');
+  docPdf.setLineWidth(0.3);
+  docPdf.line(margemEsquerda, y, 196, y);
+  y += 8;
+
+  docPdf.setFont(undefined, 'bold');
+  docPdf.setFontSize(11);
+  docPdf.setTextColor(NAVY);
+  docPdf.text(`Total geral no período: ${agrupado.totalGeral} pessoa(s)`, margemEsquerda, y);
+  y += 8;
+  docPdf.setFontSize(10);
+  docPdf.text('Total geral no período por turno:', margemEsquerda, y);
+  y += 6.5;
+  docPdf.setFont(undefined, 'normal');
+  docPdf.setFontSize(9);
+  docPdf.setTextColor('#000000');
+  agrupado.totalPorTurno.forEach((t) => {
+    if (y + 6.5 > 285) {
       docPdf.addPage();
       y = 20;
-      y = desenharCabecalhoTabela(docPdf, y);
     }
-    if (i % 2 === 1) {
-      docPdf.setFillColor('#F7F8FA');
-      docPdf.rect(margemEsquerda, y - 4.2, 182, 6.2, 'F');
-    }
-    docPdf.setFontSize(9);
-    docPdf.text(truncarParaLargura(docPdf, formatarDataBr(linha.data), 22), 14, y);
-    docPdf.text(truncarParaLargura(docPdf, linha.colaboradorNome, 56), 40, y);
-    docPdf.text(truncarParaLargura(docPdf, formatarCpf(linha.cpf), 28), 100, y);
-    docPdf.text(truncarParaLargura(docPdf, linha.turnoNome, 26), 132, y);
-    docPdf.text(
-      linha.dataHoraCheckin?.toMillis
-        ? new Date(linha.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-        : '--:--',
-      162,
-      y
-    );
+    docPdf.text(`• ${t.turnoNome} (${periodoTurno(t)}): ${t.subtotal} pessoa(s)`, margemEsquerda + 4, y);
     y += 6.5;
   });
 
-  const nomeArquivo = `lista-presenca-${(clienteNome || 'cliente').replace(/\W+/g, '-').toLowerCase()}-${dataInicio}-a-${dataFim}.pdf`;
   docPdf.save(nomeArquivo);
 }

@@ -3,7 +3,11 @@ import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { NAVY, ORANGE } from '../lib/styles';
 import { redimensionarImagemParaBase64 } from '../lib/imagem';
-import { hojeISO } from '../lib/data';
+import { hojeISO, ehMesmoDia } from '../lib/data';
+
+// Tipo de volume manuseado (07/09/2026, pedido do Pablo) — lista fixa, sem
+// virar cadastro à parte por enquanto.
+export const TIPOS_VOLUME = ['Caixas', 'Unidades', 'Paletes', 'Sacos'];
 
 // Fotos do romaneio (início/fim) ficam maiores que a selfie/logo — precisam
 // dar pra ler o documento na foto — mas ainda comprimidas o bastante pra
@@ -93,6 +97,7 @@ export default function ColetorScreen({ usuario }) {
   const [registros, setRegistros] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [planejamentos, setPlanejamentos] = useState([]);
+  const [presencas, setPresencas] = useState([]);
   const [carregando, setCarregando] = useState(true);
 
   const [clienteId, setClienteId] = useState('');
@@ -100,6 +105,7 @@ export default function ColetorScreen({ usuario }) {
   const [tipoId, setTipoId] = useState('');
   const [documentoProcesso, setDocumentoProcesso] = useState('');
   const [qtdVolumes, setQtdVolumes] = useState('');
+  const [tipoVolume, setTipoVolume] = useState('');
   const [qtdMdo, setQtdMdo] = useState('');
   const [fotosInicio, setFotosInicio] = useState([]);
   const [fotosFim, setFotosFim] = useState([]);
@@ -117,7 +123,9 @@ export default function ColetorScreen({ usuario }) {
       setTipos(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((t) => t.ativo !== false));
     });
     const unsubRegistros = onSnapshot(collection(db, 'registrosOperacao'), (snap) => {
-      setRegistros(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      // Registro cancelado (AjusteRegistrosScreen.jsx) não conta mais pra
+      // nada aqui — nem trava "operação já em andamento", nem ocupa MdO.
+      setRegistros(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((r) => !r.cancelado));
     });
     const unsubClientes = onSnapshot(collection(db, 'clientes'), (snap) => {
       setClientes(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.status !== 'inativo'));
@@ -125,12 +133,16 @@ export default function ColetorScreen({ usuario }) {
     const unsubPlanejamentos = onSnapshot(collection(db, 'planejamentoOperacional'), (snap) => {
       setPlanejamentos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
+    const unsubPresencas = onSnapshot(collection(db, 'presencas'), (snap) => {
+      setPresencas(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
     return () => {
       unsubFluxos();
       unsubTipos();
       unsubRegistros();
       unsubClientes();
       unsubPlanejamentos();
+      unsubPresencas();
     };
   }, []);
 
@@ -153,13 +165,30 @@ export default function ColetorScreen({ usuario }) {
   const fluxoSelecionado = fluxos.find((f) => f.id === fluxoId);
 
   // Teto de MdO pra hoje neste cliente: soma o que o Administrativo
-  // planejou (todos os turnos) em Planejamento Operacional. O operador não
-  // consegue digitar mais que isso — se precisar de mais gente, quem tem
-  // que mexer é o Administrativo, lá no planejamento (regra do Pablo:
-  // "o que foi planejado tem que ser cumprido pelo operador").
+  // planejou (todos os turnos) em Planejamento Operacional.
   const mdoPlanejadoHoje = planejamentos
     .filter((p) => p.clienteId === clienteId && p.data === hojeISO())
     .reduce((soma, p) => soma + (Number(p.qtdMdo) || 0), 0);
+
+  // Disponibilidade REAL de gente agora (07/09/2026, pedido do Pablo): não
+  // basta caber no planejado — precisa sobrar gente de verdade. Conta
+  // quem confirmou presença hoje nesse cliente (todos os turnos, já que
+  // registrosOperacao não distingue turno) e desconta quem já está
+  // alocado em outras operações em andamento (de outros usuários — a
+  // própria, se existisse, nem chegaria nesta tela, ver `operacaoAtiva`
+  // acima). Exemplo do Pablo: 4 presentes, 2 já numa operação em
+  // andamento → só sobram 2 pra próxima; vai liberando conforme as
+  // operações anteriores finalizam.
+  const presencaConfirmadaHoje = presencas.filter((p) => p.clienteId === clienteId && p.data === hojeISO()).length;
+  const mdoJaAlocadoAgora = registros
+    .filter((r) => r.clienteId === clienteId && !r.fim && ehMesmoDia(r.inicio, hojeISO()))
+    .reduce((soma, r) => soma + (Number(r.qtdMdo) || 0), 0);
+  const mdoDisponivelAgora = Math.max(0, presencaConfirmadaHoje - mdoJaAlocadoAgora);
+  // Teto efetivo é o menor dos dois — na prática `mdoDisponivelAgora` já
+  // nunca passa do planejado (o check-in trava presença acima do
+  // planejado), mas o `min` deixa isso garantido mesmo se um dia
+  // divergirem.
+  const mdoTetoEfetivo = clienteId ? Math.min(mdoPlanejadoHoje, mdoDisponivelAgora) : 0;
 
   // Zera as fotos de início quando troca de Operação (a quantidade exigida
   // muda de uma pra outra).
@@ -182,14 +211,15 @@ export default function ColetorScreen({ usuario }) {
   ).padStart(2, '0')}`;
 
   const fotosInicioOk = fotosInicio.filter(Boolean).length >= (fluxoSelecionado?.fotosInicio || 0);
-  const mdoDentroDoPlanejado = Number(qtdMdo) > 0 && Number(qtdMdo) <= mdoPlanejadoHoje;
+  const mdoDentroDoDisponivel = Number(qtdMdo) > 0 && Number(qtdMdo) <= mdoTetoEfetivo;
   const podeIniciar =
     Boolean(clienteId) &&
     Boolean(fluxoId) &&
     Boolean(tipoId) &&
     Boolean(documentoProcesso.trim()) &&
     Number(qtdVolumes) > 0 &&
-    mdoDentroDoPlanejado &&
+    Boolean(tipoVolume) &&
+    mdoDentroDoDisponivel &&
     fotosInicioOk;
 
   const fotosFimOk = fotosFim.filter(Boolean).length >= (fluxoDaAtiva?.fotosFim || 0);
@@ -220,6 +250,7 @@ export default function ColetorScreen({ usuario }) {
         tipoOperacaoId: tipoId,
         documentoProcesso: documentoProcesso.trim(),
         qtdVolumes: Number(qtdVolumes),
+        tipoVolume,
         qtdMdo: Number(qtdMdo),
         usuarioId: usuario.uid,
         usuarioNome: usuario.nome,
@@ -242,6 +273,7 @@ export default function ColetorScreen({ usuario }) {
           tipoOperacaoId: tipoId,
           documentoProcesso: documentoProcesso.trim(),
           qtdVolumes: Number(qtdVolumes),
+          tipoVolume,
           qtdMdo: Number(qtdMdo),
           usuarioId: usuario.uid,
           usuarioNome: usuario.nome,
@@ -254,6 +286,7 @@ export default function ColetorScreen({ usuario }) {
       setTipoId('');
       setDocumentoProcesso('');
       setQtdVolumes('');
+      setTipoVolume('');
       setQtdMdo('');
       setFotosInicio([]);
     } catch (e) {
@@ -440,33 +473,53 @@ export default function ColetorScreen({ usuario }) {
             />
           </label>
           <label style={styles.rotulo}>
-            Qtd. de MdO *
-            <span style={styles.ajuda}>
-              {clienteId
-                ? `Colaboradores nesta operação (máx. ${mdoPlanejadoHoje} planejado hoje)`
-                : 'Colaboradores dedicados a esta operação'}
-            </span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min="1"
-              max={clienteId ? mdoPlanejadoHoje : undefined}
-              style={styles.input}
-              value={qtdMdo}
-              onChange={(e) => setQtdMdo(e.target.value)}
-            />
+            Tipo de volume *
+            <span style={styles.ajuda}>Como está embalado</span>
+            <select style={styles.input} value={tipoVolume} onChange={(e) => setTipoVolume(e.target.value)}>
+              <option value="">Selecione...</option>
+              {TIPOS_VOLUME.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
+
+        <label style={styles.rotulo}>
+          Qtd. de MdO *
+          <span style={styles.ajuda}>
+            {clienteId
+              ? `Colaboradores nesta operação (máx. ${mdoTetoEfetivo} disponível agora)`
+              : 'Colaboradores dedicados a esta operação'}
+          </span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min="1"
+            max={clienteId ? mdoTetoEfetivo : undefined}
+            style={styles.input}
+            value={qtdMdo}
+            onChange={(e) => setQtdMdo(e.target.value)}
+          />
+        </label>
         {clienteId && mdoPlanejadoHoje === 0 && (
           <p style={styles.avisoPlanejamento}>
             ⚠️ Não há MdO planejada pra hoje neste cliente. Peça pro Administrativo lançar em
             Planejamento antes de iniciar.
           </p>
         )}
-        {clienteId && mdoPlanejadoHoje > 0 && Number(qtdMdo) > mdoPlanejadoHoje && (
+        {clienteId && mdoPlanejadoHoje > 0 && mdoDisponivelAgora === 0 && (
           <p style={styles.avisoPlanejamento}>
-            ⚠️ Só há {mdoPlanejadoHoje} colaborador(es) planejado(s) pra hoje. Se precisar de mais,
-            peça pro Administrativo ajustar o Planejamento.
+            ⚠️ Não há colaborador disponível agora — todos já estão em outra(s) operação(ões) em
+            andamento neste cliente. Assim que alguma finalizar, os colaboradores dela ficam livres
+            pra próxima.
+          </p>
+        )}
+        {clienteId && mdoDisponivelAgora > 0 && Number(qtdMdo) > mdoTetoEfetivo && (
+          <p style={styles.avisoPlanejamento}>
+            ⚠️ Só há {mdoTetoEfetivo} colaborador(es) disponível(is) agora ({presencaConfirmadaHoje} confirmado(s) hoje,{' '}
+            {mdoJaAlocadoAgora} já em outra(s) operação(ões) em andamento).
           </p>
         )}
 

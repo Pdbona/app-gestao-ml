@@ -7,8 +7,19 @@ import DashboardTab from './DashboardTab';
 import CadastrosScreen from './cadastros/CadastrosScreen';
 import ColetorScreen from './ColetorScreen';
 import PlanejamentoScreen from './PlanejamentoScreen';
+import AjusteRegistrosScreen from './AjusteRegistrosScreen';
 import RelatoriosScreen from './RelatoriosScreen';
 import AutorizacoesScreen from './AutorizacoesScreen';
+
+// Sub-itens do menu "Planejamento" (07/09/2026) — mesmo espírito do
+// submenu de Cadastros, só que fixo (não vem de SECOES_CADASTRO porque
+// não tem grupo/2º nível): "Novo Planejamento" é o lançamento de MdO já
+// existente, "Ajuste de Registros" é a ferramenta nova pro Gestor
+// corrigir/fechar/cancelar registros do Coletor.
+const ITENS_SUBMENU_PLANEJAMENTO = [
+  { id: 'planejamentoNovo', label: 'Novo Planejamento' },
+  { id: 'planejamentoAjuste', label: 'Ajuste de Registros' }
+];
 
 // Logo da ML Serviços é a marca principal do app — sempre em destaque. A
 // logo da SBS Solution aparece só como desenvolvedora (rodapé). Arquivos em
@@ -158,6 +169,8 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
   const [abaAtual, setAbaAtual] = useState(usuarioInicial ? abaInicial(usuarioInicial.permissoes) : 'dashboard');
   const [cadastrosExpandido, setCadastrosExpandido] = useState(false);
   const [secaoCadastroAtual, setSecaoCadastroAtual] = useState(null);
+  const [planejamentoExpandido, setPlanejamentoExpandido] = useState(false);
+  const [secaoPlanejamentoAtual, setSecaoPlanejamentoAtual] = useState(null);
   const [pendentesAutorizacao, setPendentesAutorizacao] = useState(0);
 
   // Perfil "exclusivo" de Coletor (só essa aba habilitada) já cai direto
@@ -196,11 +209,13 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
   // 1 seção de cadastro estiver marcada (modelo flat, ver lib/permissoes.js).
   const temCadastros = SECOES_CADASTRO.some((s) => permissoes.acessos?.[s.id]);
   const temColetor = Boolean(permissoes.acessos?.coletor);
-  const temPlanejamento = Boolean(permissoes.acessos?.planejamento);
+  const navPlanejamento = ITENS_SUBMENU_PLANEJAMENTO.filter((item) => permissoes.acessos?.[item.id]);
+  const temPlanejamento = navPlanejamento.length > 0;
   const temRelatorios = Boolean(permissoes.acessos?.relatorios);
   const temAutorizacoes = Boolean(permissoes.acessos?.autorizacoes);
   const navCadastros = temCadastros ? montarNavegacaoCadastros(permissoes) : [];
   const secaoAtual = navCadastros.find((n) => n.id === secaoCadastroAtual) || navCadastros[0];
+  const secaoPlanejamentoAtualResolvida = navPlanejamento.find((n) => n.id === secaoPlanejamentoAtual) || navPlanejamento[0];
 
   const abrirCadastros = () => {
     setAbaAtual('cadastros');
@@ -211,6 +226,17 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
     setAbaAtual('cadastros');
     setCadastrosExpandido(true);
     setSecaoCadastroAtual(id);
+  };
+
+  const abrirPlanejamento = () => {
+    setAbaAtual('planejamento');
+    setPlanejamentoExpandido((expandido) => !expandido);
+  };
+
+  const abrirSecaoPlanejamento = (id) => {
+    setAbaAtual('planejamento');
+    setPlanejamentoExpandido(true);
+    setSecaoPlanejamentoAtual(id);
   };
 
   return (
@@ -288,12 +314,35 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
           )}
 
           {temPlanejamento && (
-            <button
-              onClick={() => setAbaAtual('planejamento')}
-              style={{ ...styles.sidebarButton, ...(abaAtual === 'planejamento' ? styles.sidebarButtonAtivo : {}) }}
-            >
-              🗓️ Planejamento
-            </button>
+            <>
+              <button
+                onClick={abrirPlanejamento}
+                style={{
+                  ...styles.sidebarButton,
+                  ...(abaAtual === 'planejamento' ? styles.sidebarButtonAtivo : {})
+                }}
+              >
+                🗓️ Planejamento
+              </button>
+              {planejamentoExpandido && (
+                <div style={styles.sidebarSubGroup} className="app-sidebar-sub">
+                  {navPlanejamento.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => abrirSecaoPlanejamento(item.id)}
+                      style={{
+                        ...styles.sidebarSubButton,
+                        ...(abaAtual === 'planejamento' && secaoPlanejamentoAtualResolvida?.id === item.id
+                          ? styles.sidebarSubButtonAtivo
+                          : {})
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {temRelatorios && (
@@ -366,7 +415,12 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
           {abaAtual === 'coletor' && temColetor && (
             <ColetorScreen usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />
           )}
-          {abaAtual === 'planejamento' && temPlanejamento && <PlanejamentoScreen />}
+          {abaAtual === 'planejamento' && temPlanejamento && secaoPlanejamentoAtualResolvida?.id === 'planejamentoAjuste' && (
+            <AjusteRegistrosScreen usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />
+          )}
+          {abaAtual === 'planejamento' && temPlanejamento && secaoPlanejamentoAtualResolvida?.id !== 'planejamentoAjuste' && (
+            <PlanejamentoScreen />
+          )}
           {abaAtual === 'relatorios' && temRelatorios && <RelatoriosScreen />}
           {abaAtual === 'autorizacoes' && temAutorizacoes && (
             <AutorizacoesScreen usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />

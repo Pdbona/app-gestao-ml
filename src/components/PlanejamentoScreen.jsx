@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { db } from '../firebase';
 import { collection, setDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { ui, NAVY } from '../lib/styles';
-import { obterConfigSelfie, salvarConfigSelfie, RETENCAO_SELFIE_DIAS_PADRAO } from '../lib/limpezaSelfies';
 import { hojeISO, datasNoIntervalo, formatarDataBr } from '../lib/data';
 
 const FORM_VAZIO = {
@@ -33,10 +32,6 @@ export default function PlanejamentoScreen() {
   const [erro, setErro] = useState('');
   const [filtroCliente, setFiltroCliente] = useState('');
 
-  const [guardarSelfie, setGuardarSelfie] = useState(false);
-  const [retencaoDias, setRetencaoDias] = useState(RETENCAO_SELFIE_DIAS_PADRAO);
-  const [salvandoConfigSelfie, setSalvandoConfigSelfie] = useState(false);
-
   useEffect(() => {
     const unsubClientes = onSnapshot(query(collection(db, 'clientes'), orderBy('nome')), (snap) => {
       setClientes(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.status !== 'inativo'));
@@ -57,13 +52,6 @@ export default function PlanejamentoScreen() {
       unsubTurnos();
       unsubPlanejamentos();
     };
-  }, []);
-
-  useEffect(() => {
-    obterConfigSelfie().then((cfg) => {
-      setGuardarSelfie(cfg.guardarSelfie);
-      setRetencaoDias(cfg.retencaoSelfieDias);
-    });
   }, []);
 
   const nomeCliente = (id) => clientes.find((c) => c.id === id)?.nome || '(cliente removido)';
@@ -144,23 +132,6 @@ export default function PlanejamentoScreen() {
       await deleteDoc(doc(db, 'planejamentoOperacional', p.id));
     } catch (e) {
       setErro('Falha ao excluir. Tente novamente.');
-    }
-  };
-
-  const salvarConfigSelfieForm = async () => {
-    const dias = Number(retencaoDias);
-    if (guardarSelfie && (!dias || dias <= 0)) {
-      setErro('Informe um número de dias válido pra retenção da selfie.');
-      return;
-    }
-    setSalvandoConfigSelfie(true);
-    setErro('');
-    try {
-      await salvarConfigSelfie({ guardarSelfie, retencaoSelfieDias: dias || RETENCAO_SELFIE_DIAS_PADRAO });
-    } catch (e) {
-      setErro('Falha ao salvar a configuração de selfie.');
-    } finally {
-      setSalvandoConfigSelfie(false);
     }
   };
 
@@ -345,50 +316,6 @@ export default function PlanejamentoScreen() {
           ))}
         </div>
       )}
-
-      <div style={{ ...ui.formCard, marginTop: 28, maxWidth: 420 }}>
-        <h3 style={{ marginTop: 0, color: NAVY, fontSize: 16 }}>⚙️ Selfie do check-in</h3>
-
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, marginBottom: 12 }}>
-          <input
-            type="checkbox"
-            style={{ marginTop: 3 }}
-            checked={guardarSelfie}
-            onChange={(e) => setGuardarSelfie(e.target.checked)}
-          />
-          <span>
-            Guardar a selfie no Storage (auditoria)
-            <br />
-            <span style={{ fontSize: 12, color: '#999' }}>
-              Requer o plano pago do Firebase (Blaze) — por ora a foto continua sendo exigida no
-              check-in pra confirmar quem é a pessoa, só não fica salva em lugar nenhum.
-            </span>
-          </span>
-        </label>
-
-        {guardarSelfie && (
-          <label style={ui.label}>
-            Manter a selfie por quantos dias?
-            <input
-              type="number"
-              min="1"
-              style={ui.input}
-              value={retencaoDias}
-              onChange={(e) => setRetencaoDias(e.target.value)}
-            />
-          </label>
-        )}
-        {guardarSelfie && (
-          <p style={ui.placeholderNote}>
-            Depois desse prazo, a foto é apagada automaticamente (o registro de presença em si
-            continua existindo, só a foto some) — a limpeza roda quando alguém abre o Dashboard.
-          </p>
-        )}
-
-        <button style={ui.secondaryButton} onClick={salvarConfigSelfieForm} disabled={salvandoConfigSelfie}>
-          {salvandoConfigSelfie ? 'Salvando...' : 'Salvar'}
-        </button>
-      </div>
     </div>
   );
 }

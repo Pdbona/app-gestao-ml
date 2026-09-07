@@ -8,6 +8,7 @@ import ColaboradoresCadastro from './ColaboradoresCadastro';
 import TurnosCadastro from './TurnosCadastro';
 import TiposOperacaoCadastro from './TiposOperacaoCadastro';
 import FluxosCadastro from './FluxosCadastro';
+import SelfieConfigCard from './SelfieConfigCard';
 
 const TELAS = {
   clientes: ClientesCadastro,
@@ -55,6 +56,7 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
         <div style={styles.grupoOperacaoCol}>
           {idsPresentes.includes('fluxos') && <FluxosCadastro permissoes={permissoes} compacto />}
           {idsPresentes.includes('turnos') && <TurnosCadastro permissoes={permissoes} compacto />}
+          <SelfieConfigCard />
         </div>
       </div>
     );

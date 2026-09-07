@@ -72,8 +72,10 @@ export default function DashboardTab() {
         setPlanejamentos(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
       ),
       onSnapshot(collection(db, 'presencas'), (snap) => setPresencas(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      // Registro cancelado (AjusteRegistrosScreen.jsx) some do Dashboard —
+      // fica só guardado no Firestore pra auditoria.
       onSnapshot(collection(db, 'registrosOperacao'), (snap) =>
-        setRegistros(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+        setRegistros(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((r) => !r.cancelado))
       ),
       onSnapshot(collection(db, 'tiposOperacao'), (snap) => setTiposOperacao(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
       onSnapshot(collection(db, 'fluxos'), (snap) => setFluxos(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))

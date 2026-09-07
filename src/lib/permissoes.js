@@ -24,9 +24,18 @@
 // Um usuário tem um `perfilId` (perfil base, cadastrado em Cadastros →
 // Perfis) e, opcionalmente, `permissoesCustom` — override PARCIAL do
 // mesmo formato, só pra aquele usuário. `mergePermissoes` combina os dois.
+// `submenuPai` (07/09/2026) marca os 2 acessos que vivem DENTRO do item
+// "Planejamento" da sidebar (em vez de serem um botão de topo à parte) —
+// "Novo Planejamento" é o lançamento de MdO já existente; "Ajuste de
+// Registros" é a ferramenta nova do Gestor pra corrigir/fechar/cancelar
+// registros do Coletor que o operador esqueceu ou fez errado (ver
+// AjusteRegistrosScreen.jsx). Continuam `area: 'aba'` normalmente (contam
+// pra `abaInicial()` e aparecem na lista de Acessos do Perfil, só a
+// sidebar em si que os agrupa visualmente).
 export const CATALOGO_ACESSOS = [
   { id: 'dashboard', label: 'Dashboard', icone: '📊', area: 'aba' },
-  { id: 'planejamento', label: 'Planejamento', icone: '🗓️', area: 'aba' },
+  { id: 'planejamentoNovo', label: 'Novo Planejamento', icone: '🗓️', area: 'aba', submenuPai: 'planejamento' },
+  { id: 'planejamentoAjuste', label: 'Ajuste de Registros', icone: '🛠️', area: 'aba', submenuPai: 'planejamento' },
   { id: 'relatorios', label: 'Relatórios', icone: '📈', area: 'aba' },
   { id: 'autorizacoes', label: 'Autorizações', icone: '🔔', area: 'aba' },
   { id: 'coletor', label: 'Coletor', icone: '📱', area: 'aba' },

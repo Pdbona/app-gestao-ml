@@ -15,8 +15,11 @@ function noPeriodo(itens, clienteId, dataInicio, dataFim, campoData, ehTimestamp
   });
 }
 
+// Registros cancelados (AjusteRegistrosScreen.jsx, 07/09/2026) ficam
+// invisíveis pra qualquer cálculo/relatório — continuam gravados no
+// Firestore só pra auditoria, nunca somem de vez.
 export function filtrarRegistros(registros, clienteId, dataInicio, dataFim) {
-  return noPeriodo(registros, clienteId, dataInicio, dataFim, 'inicio', true);
+  return noPeriodo(registros.filter((r) => !r.cancelado), clienteId, dataInicio, dataFim, 'inicio', true);
 }
 
 export function filtrarPlanejamentos(planejamentos, clienteId, dataInicio, dataFim) {

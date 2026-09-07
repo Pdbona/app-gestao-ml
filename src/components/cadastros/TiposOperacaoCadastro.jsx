@@ -52,7 +52,9 @@ export default function TiposOperacaoCadastro({ permissoes }) {
     );
     const unsubRegistros = onSnapshot(
       collection(db, 'registrosOperacao'),
-      (snap) => setRegistros(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      // Registro cancelado (AjusteRegistrosScreen.jsx) não entra na amostra
+      // de calibragem — fica só guardado pra auditoria.
+      (snap) => setRegistros(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((r) => !r.cancelado)),
       () => setRegistros([])
     );
     return () => {

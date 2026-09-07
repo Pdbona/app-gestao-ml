@@ -389,6 +389,8 @@ export default function RelatoriosScreen() {
                     <th style={ui.th}>CPF</th>
                     <th style={ui.th}>Turno</th>
                     <th style={ui.th}>Hora de Presença</th>
+                    <th style={ui.th}>Hora de Saída</th>
+                    <th style={ui.th}>Justificativa</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -410,17 +412,32 @@ export default function RelatoriosScreen() {
                                     })
                                   : '--:--'}
                               </td>
+                              <td style={ui.td}>
+                                {linha.dataHoraSaida?.toMillis
+                                  ? new Date(linha.dataHoraSaida.toMillis()).toLocaleTimeString('pt-BR', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })
+                                  : '—'}
+                              </td>
+                              <td style={{ ...ui.td, fontSize: 12, color: '#555', maxWidth: 220 }}>
+                                {linha.saidaJustificativa
+                                  ? `${linha.saidaTipoJustificativa === 'antecipada' ? 'Saída antecipada' : 'Hora extra'}: ${
+                                      linha.saidaJustificativa
+                                    }`
+                                  : '—'}
+                              </td>
                             </tr>
                           ))}
                           <tr>
-                            <td colSpan={5} style={styles.linhaSubtotalTurno}>
+                            <td colSpan={7} style={styles.linhaSubtotalTurno}>
                               Subtotal {turno.turnoNome} ({periodoTurno(turno)}): {turno.pessoas.length} pessoa(s)
                             </td>
                           </tr>
                         </React.Fragment>
                       ))}
                       <tr>
-                        <td colSpan={5} style={styles.linhaSubtotalDia}>
+                        <td colSpan={7} style={styles.linhaSubtotalDia}>
                           Subtotal do dia {formatarDataBr(dia.data)}: {dia.subtotalDia} pessoa(s)
                         </td>
                       </tr>

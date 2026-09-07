@@ -6,22 +6,33 @@ import { NAVY, ORANGE } from '../lib/styles';
 import { normalizarCpf, validarCpf, formatarCpf } from '../lib/cpf';
 import { capturarGeolocalizacao, distanciaMetros, TOLERANCIA_GEO_METROS } from '../lib/geo';
 import { obterConfigSelfie } from '../lib/limpezaSelfies';
-import { hojeISO, statusJanelaTurno, minutosDesdeInicioTurno } from '../lib/data';
+import { hojeISO, statusJanelaEntrada, statusJanelaSaida, minutosDesdeInicioTurno } from '../lib/data';
 
 // Tela PÚBLICA (sem login) — aberta direto pelo QR Code fixado no
 // Cliente/Local (ver botão "Gerar QR Code" em ClientesCadastro.jsx e a
-// leitura de `?checkin=` em App.jsx). Wizard: CPF (validado contra a base
-// de Colaboradores) → Turno → Selfie → Geolocalização. Se qualquer
-// validação falhar, NADA é gravado — só mostra o erro.
+// leitura de `?checkin=` em App.jsx). O mesmo QR serve pra CHEGADA e
+// SAÍDA (feature de saída, 04/09/2026) — o colaborador só digita o CPF de
+// novo; o sistema detecta sozinho se ele já tem uma presença aberta hoje
+// nesse Cliente/Local (chegada sem saída) e já cai direto no wizard de
+// Saída, sem escolha manual (confirmado com o Pablo via AskUserQuestion).
+//
+// Wizard CHEGADA: CPF → Turno (só se 2+ planejados) → [pedido de
+// autorização, se atrasado] → Selfie → Geolocalização.
+// Wizard SAÍDA: CPF (detecta) → [Justificativa, se fora da janela] →
+// Selfie → Geolocalização.
+// Se qualquer validação falhar, NADA é gravado — só mostra o erro.
 export default function CheckinPublicScreen({ clienteId }) {
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState('');
   const [cliente, setCliente] = useState(null);
   const [colaboradores, setColaboradores] = useState([]);
   const [turnosDisponiveis, setTurnosDisponiveis] = useState([]);
+  const [turnosAtivosTodos, setTurnosAtivosTodos] = useState([]);
   const [guardarSelfie, setGuardarSelfie] = useState(false);
 
-  const [etapa, setEtapa] = useState('cpf'); // cpf | turno | selfie | geo | sucesso | bloqueado | aguardandoAutorizacao
+  // cpf | turno | justificativaSaida | selfie | geo | sucesso | bloqueado | aguardandoAutorizacao
+  const [etapa, setEtapa] = useState('cpf');
+  const [modo, setModo] = useState('entrada'); // 'entrada' | 'saida' — decidido sozinho em confirmarCpf()
   const [cpfDigitado, setCpfDigitado] = useState('');
   const [colaborador, setColaborador] = useState(null);
   const [turnoId, setTurnoId] = useState('');
@@ -35,6 +46,13 @@ export default function CheckinPublicScreen({ clienteId }) {
   // marcar `consumidaEm` nela depois que a presença for gravada com sucesso
   // (evita que a mesma aprovação sirva pra uma 2ª presença no mesmo turno/dia).
   const [solicitacaoAprovadaId, setSolicitacaoAprovadaId] = useState(null);
+
+  // ======== Estado específico da SAÍDA ========
+  const [presencaAbertaId, setPresencaAbertaId] = useState(null);
+  const [turnoDaSaida, setTurnoDaSaida] = useState(null);
+  const [tipoJustificativaSaida, setTipoJustificativaSaida] = useState(null); // 'antecipada' | 'tempo_extra' | null
+  const [minutosDesvioSaida, setMinutosDesvioSaida] = useState(null);
+  const [justificativaSaida, setJustificativaSaida] = useState('');
 
   const inputSelfieRef = useRef(null);
   const selfieUrl = useMemo(() => (selfie ? URL.createObjectURL(selfie) : null), [selfie]);
@@ -79,6 +97,10 @@ export default function CheckinPublicScreen({ clienteId }) {
         setCliente(clienteData);
         setColaboradores(colabs);
         setTurnosDisponiveis(turnosPlanejadosHoje);
+        // Guarda TODOS os turnos ativos (não só os planejados hoje) — a
+        // Saída precisa resolver o turno da presença aberta mesmo que, por
+        // algum motivo, ele não esteja (mais) na lista de planejados hoje.
+        setTurnosAtivosTodos(turnosAtivos);
         setGuardarSelfie(configSelfie.guardarSelfie);
       } catch (e) {
         if (!cancelado) setErroCarga('Falha ao carregar os dados. Verifique sua conexão e tente novamente.');
@@ -92,19 +114,61 @@ export default function CheckinPublicScreen({ clienteId }) {
     };
   }, [clienteId]);
 
-  // Janela de horário (antes/normal/atraso/expirado) aplicada ao turno que
-  // o colaborador está de fato tentando confirmar — vale tanto quando o
+  // ======== Fluxo de SAÍDA ========
+  // Resolve o turno da presença aberta e decide se precisa de
+  // justificativa (fora da janela de ±10min do horaFim) antes de seguir
+  // pra selfie/geo — mesma ordem do fluxo de chegada (checagem de horário
+  // primeiro, foto depois).
+  const iniciarFluxoSaida = (presencaAberta) => {
+    const turno = turnosAtivosTodos.find((t) => t.id === presencaAberta.turnoId) || null;
+    setModo('saida');
+    setPresencaAbertaId(presencaAberta.id);
+    setTurnoId(presencaAberta.turnoId);
+    setTurnoDaSaida(turno);
+
+    const status = statusJanelaSaida(turno?.horaFim);
+    if (status === 'normal' || status === 'sem_horario') {
+      setTipoJustificativaSaida(null);
+      setMinutosDesvioSaida(null);
+      setEtapa('selfie');
+      return;
+    }
+    setTipoJustificativaSaida(status === 'antecipada' ? 'antecipada' : 'tempo_extra');
+    setMinutosDesvioSaida(minutosDesdeInicioTurno(turno.horaFim));
+    setJustificativaSaida('');
+    setEtapa('justificativaSaida');
+  };
+
+  // ======== Fluxo de CHEGADA (janela de horário aplicada ao turno que o
+  // colaborador está de fato tentando confirmar — vale tanto quando o
   // turno foi auto-selecionado (só 1 planejado pro dia) quanto quando foi
-  // escolhido manualmente no seletor (2+ planejados). Antes só rodava no
-  // caso de turno único; com 2+ turnos planejados dava pra escolher
-  // QUALQUER um sem checagem nenhuma (bug relatado pelo Pablo com dado
-  // real: DIURNO já encerrado há quase 6h ainda deixou confirmar, porque
-  // NOTURNO também estava planejado pro mesmo dia).
-  const avaliarTurnoEscolhido = async (turno, colaboradorEscolhido) => {
+  // escolhido manualmente no seletor (2+ planejados), ver histórico do bug
+  // de janela com 2+ turnos corrigido em 03/09/2026). ========
+  const avaliarJanelaEntrada = async (turno, colaboradorEscolhido) => {
     const solicitacaoId = `${colaboradorEscolhido.id}_${clienteId}_${turno.id}_${hojeISO()}`;
 
     setVerificandoCpf(true);
     try {
+      // Guarda-corpo contra reabrir um turno já concluído (chegada + saída
+      // já registradas hoje) — sem isso, ao escanear o QR de novo depois de
+      // já ter saído, o fluxo trataria como uma chegada nova (a consulta
+      // abaixo em confirmarCpf só acha presença ABERTA) e criaria um 2º
+      // registro pro mesmo turno/dia, poluindo o relatório de presença.
+      const fechadaSnap = await getDocs(
+        query(
+          collection(db, 'presencas'),
+          where('clienteId', '==', clienteId),
+          where('colaboradorId', '==', colaboradorEscolhido.id),
+          where('turnoId', '==', turno.id),
+          where('data', '==', hojeISO())
+        )
+      );
+      if (fechadaSnap.docs.some((d) => d.data().dataHoraSaida)) {
+        setMensagemBloqueio(`Você já registrou chegada e saída no turno ${turno.nome} hoje.`);
+        setEtapa('bloqueado');
+        return;
+      }
+
       const solicitacaoSnap = await getDoc(doc(db, 'solicitacoesPresenca', solicitacaoId));
       if (solicitacaoSnap.exists()) {
         const solicitacao = solicitacaoSnap.data();
@@ -124,22 +188,16 @@ export default function CheckinPublicScreen({ clienteId }) {
           return;
         }
         // status 'aprovada' mas já consumida (2ª tentativa depois de já ter
-        // gravado a presença) — cai no fluxo normal abaixo, que hoje tende
-        // a bloquear de novo por 'expirado'.
+        // gravado a presença) — cai no fluxo normal abaixo.
       }
 
-      const statusJanela = statusJanelaTurno(turno.horaInicio);
+      const statusJanela = statusJanelaEntrada(turno.horaInicio);
       if (statusJanela === 'antes') {
         setMensagemBloqueio(
-          `O turno ${turno.nome} ainda não começou. Horário: ${turno.horaInicio}${
-            turno.horaFim ? ` às ${turno.horaFim}` : ''
-          }.`
+          `O turno ${turno.nome} começa às ${turno.horaInicio}${
+            turno.horaFim ? ` (até ${turno.horaFim})` : ''
+          }. Você pode confirmar a chegada a partir de 10 minutos antes.`
         );
-        setEtapa('bloqueado');
-        return;
-      }
-      if (statusJanela === 'expirado') {
-        setMensagemBloqueio('O prazo para confirmar presença neste turno expirou. Fale com o Administrativo.');
         setEtapa('bloqueado');
         return;
       }
@@ -191,13 +249,44 @@ export default function CheckinPublicScreen({ clienteId }) {
       return;
     }
     setColaborador(encontrado);
+    setModo('entrada');
+
+    // Detecta sozinho se é chegada ou saída: se já existe uma presença de
+    // hoje, neste Cliente/Local, sem `dataHoraSaida`, o próximo registro
+    // deste CPF é a saída dela — sem escolha manual (decisão confirmada
+    // com o Pablo via AskUserQuestion).
+    setVerificandoCpf(true);
+    try {
+      const abertaSnap = await getDocs(
+        query(
+          collection(db, 'presencas'),
+          where('clienteId', '==', clienteId),
+          where('colaboradorId', '==', encontrado.id),
+          where('data', '==', hojeISO())
+        )
+      );
+      const abertas = abertaSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((p) => !p.dataHoraSaida)
+        .sort((a, b) => (b.dataHoraCheckin?.toMillis?.() || 0) - (a.dataHoraCheckin?.toMillis?.() || 0));
+
+      if (abertas.length > 0) {
+        setVerificandoCpf(false);
+        iniciarFluxoSaida(abertas[0]);
+        return;
+      }
+    } catch (e) {
+      setErro('Falha ao verificar seu status. Verifique sua conexão e tente novamente.');
+      setVerificandoCpf(false);
+      return;
+    }
+    setVerificandoCpf(false);
 
     if (turnosDisponiveis.length !== 1) {
       setEtapa('turno');
       return;
     }
-
-    await avaliarTurnoEscolhido(turnosDisponiveis[0], encontrado);
+    await avaliarJanelaEntrada(turnosDisponiveis[0], encontrado);
   };
 
   const confirmarTurno = async () => {
@@ -211,7 +300,16 @@ export default function CheckinPublicScreen({ clienteId }) {
       return;
     }
     setErro('');
-    await avaliarTurnoEscolhido(turno, colaborador);
+    await avaliarJanelaEntrada(turno, colaborador);
+  };
+
+  const confirmarJustificativaSaida = () => {
+    if (!justificativaSaida.trim()) {
+      setErro('Explique o motivo pra continuar.');
+      return;
+    }
+    setErro('');
+    setEtapa('selfie');
   };
 
   const confirmarSelfie = () => {
@@ -235,12 +333,18 @@ export default function CheckinPublicScreen({ clienteId }) {
       const distancia = distanciaMetros(lat, lng, cliente.geoLat, cliente.geoLng);
       if (distancia > TOLERANCIA_GEO_METROS) {
         setErro(
-          `Você está a ${Math.round(distancia)}m do local — precisa estar no Cliente/Local pra confirmar presença.`
+          `Você está a ${Math.round(distancia)}m do local — precisa estar no Cliente/Local pra confirmar ${
+            modo === 'saida' ? 'a saída' : 'presença'
+          }.`
         );
         setCapturandoGeo(false);
         return;
       }
-      await salvarPresenca({ lat, lng, distancia });
+      if (modo === 'saida') {
+        await salvarSaida({ lat, lng, distancia });
+      } else {
+        await salvarPresenca({ lat, lng, distancia });
+      }
     } catch (e) {
       setErro('Não foi possível capturar sua localização. Verifique a permissão de localização do navegador.');
       setCapturandoGeo(false);
@@ -273,7 +377,12 @@ export default function CheckinPublicScreen({ clienteId }) {
         geoLat: lat,
         geoLng: lng,
         distanciaMetros: Math.round(distancia),
-        fotoPath
+        fotoPath,
+        // Campos de saída começam vazios — preenchidos só quando o mesmo
+        // colaborador registrar a saída depois (ver salvarSaida()).
+        dataHoraSaida: null,
+        saidaJustificativa: null,
+        saidaTipoJustificativa: null
       });
       // Se essa presença só foi possível porque a liderança aprovou uma
       // solicitação de atraso, marca a solicitação como consumida — best
@@ -291,6 +400,58 @@ export default function CheckinPublicScreen({ clienteId }) {
       setSalvando(false);
       setCapturandoGeo(false);
     }
+  };
+
+  // Atualiza a MESMA presença aberta (não cria um doc novo) com os dados
+  // de saída — geo/selfie próprios de saída, pra não sobrescrever os de
+  // chegada, e a justificativa (quando exigida) junto, pra tudo compor o
+  // mesmo registro no relatório de presença.
+  const salvarSaida = async ({ lat, lng, distancia }) => {
+    setSalvando(true);
+    setErro('');
+    try {
+      let fotoPathSaida = null;
+      if (guardarSelfie) {
+        fotoPathSaida = `presencas/${presencaAbertaId}/selfie-saida.jpg`;
+        await uploadBytes(ref(storage, fotoPathSaida), selfie);
+      }
+      await updateDoc(doc(db, 'presencas', presencaAbertaId), {
+        dataHoraSaida: serverTimestamp(),
+        geoLatSaida: lat,
+        geoLngSaida: lng,
+        distanciaMetrosSaida: Math.round(distancia),
+        fotoPathSaida,
+        saidaJustificativa: justificativaSaida.trim() || null,
+        saidaTipoJustificativa: tipoJustificativaSaida,
+        saidaMinutosDesvio: minutosDesvioSaida
+      });
+      setEtapa('sucesso');
+    } catch (e) {
+      setErro('Falha ao gravar a saída. Verifique sua conexão e tente novamente.');
+    } finally {
+      setSalvando(false);
+      setCapturandoGeo(false);
+    }
+  };
+
+  // Reseta o wizard pro início — usado pelo botão "Sair" da tela de
+  // "aguardando autorização" (pedido do Pablo: dar a opção de sair e
+  // avisar que dá pra tentar de novo em 10min).
+  const reiniciar = () => {
+    setEtapa('cpf');
+    setCpfDigitado('');
+    setColaborador(null);
+    setTurnoId('');
+    setSelfie(null);
+    setErro('');
+    setMensagemBloqueio('');
+    setSolicitacaoAprovadaId(null);
+    setModo('entrada');
+    setPresencaAbertaId(null);
+    setTurnoDaSaida(null);
+    setTipoJustificativaSaida(null);
+    setMinutosDesvioSaida(null);
+    setJustificativaSaida('');
   };
 
   if (carregando) {
@@ -311,12 +472,12 @@ export default function CheckinPublicScreen({ clienteId }) {
     );
   }
 
-  const turnoNome = (id) => turnosDisponiveis.find((t) => t.id === id)?.nome || '';
+  const turnoNome = (id) => turnosDisponiveis.find((t) => t.id === id)?.nome || turnoDaSaida?.nome || '';
 
   return (
     <div style={styles.pagina}>
       <div style={styles.card}>
-        <h2 style={styles.titulo}>Confirmar presença</h2>
+        <h2 style={styles.titulo}>{modo === 'saida' && etapa !== 'cpf' ? 'Registrar saída' : 'Confirmar presença'}</h2>
         <p style={styles.subtitulo}>{cliente.nome}</p>
 
         {etapa === 'cpf' && (
@@ -334,6 +495,7 @@ export default function CheckinPublicScreen({ clienteId }) {
                 autoFocus
               />
             </label>
+            <p style={styles.textoAjuda}>Já confirmou chegada hoje? Digite o CPF de novo pra registrar a saída.</p>
             {erro && <div style={styles.erroTexto}>❌ {erro}</div>}
             <button style={styles.botaoGrande} onClick={confirmarCpf} disabled={verificandoCpf}>
               {verificandoCpf ? 'Verificando...' : 'Continuar'}
@@ -362,9 +524,46 @@ export default function CheckinPublicScreen({ clienteId }) {
           </>
         )}
 
+        {etapa === 'justificativaSaida' && (
+          <>
+            <p style={styles.textoInfo}>
+              {tipoJustificativaSaida === 'antecipada' ? (
+                <>
+                  Você está saindo <strong>antes</strong> do fim do turno {turnoDaSaida?.nome} (previsto pra{' '}
+                  {turnoDaSaida?.horaFim}), {Math.abs(minutosDesvioSaida)}min antes. Saídas antecipadas de mais de
+                  10min podem gerar <strong>desconto no pagamento</strong>. Explique o motivo:
+                </>
+              ) : (
+                <>
+                  Você está saindo <strong>depois</strong> do fim do turno {turnoDaSaida?.nome} (previsto pra{' '}
+                  {turnoDaSaida?.horaFim}), {minutosDesvioSaida}min de tempo extra. Esse tempo precisa ser justificado
+                  pra ser <strong>cobrado do cliente</strong>. Explique o motivo:
+                </>
+              )}
+            </p>
+            <label style={styles.rotulo}>
+              Motivo *
+              <textarea
+                style={styles.textarea}
+                rows={4}
+                value={justificativaSaida}
+                onChange={(e) => setJustificativaSaida(e.target.value)}
+                placeholder="Explique o motivo..."
+                autoFocus
+              />
+            </label>
+            {erro && <div style={styles.erroTexto}>❌ {erro}</div>}
+            <button style={styles.botaoGrande} onClick={confirmarJustificativaSaida}>
+              Continuar
+            </button>
+          </>
+        )}
+
         {etapa === 'selfie' && (
           <>
-            <p style={styles.textoInfo}>Agora tire uma selfie pra confirmar quem é você.</p>
+            <p style={styles.textoInfo}>
+              {modo === 'saida' ? 'Agora tire uma selfie pra confirmar sua saída.' : 'Agora tire uma selfie pra confirmar quem é você.'}
+            </p>
             <button
               type="button"
               onClick={() => inputSelfieRef.current?.click()}
@@ -390,7 +589,7 @@ export default function CheckinPublicScreen({ clienteId }) {
         {etapa === 'geo' && (
           <>
             <p style={styles.textoInfo}>
-              Por último, confirme que você está em <strong>{cliente.nome}</strong>.
+              Por último, confirme que você está {modo === 'saida' ? 'saindo de' : 'em'} <strong>{cliente.nome}</strong>.
             </p>
             {erro && <div style={styles.erroTexto}>❌ {erro}</div>}
             <button style={styles.botaoGrande} onClick={confirmarLocal} disabled={capturandoGeo || salvando}>
@@ -403,9 +602,15 @@ export default function CheckinPublicScreen({ clienteId }) {
           <div style={styles.sucesso}>
             <p style={styles.sucessoIcone}>✅</p>
             <p style={styles.sucessoTexto}>
-              Presença confirmada, {colaborador.nome}!
+              {modo === 'saida' ? `Saída registrada, ${colaborador.nome}!` : `Presença confirmada, ${colaborador.nome}!`}
               <br />
               {cliente.nome} — {turnoNome(turnoId)}
+              {modo === 'saida' && tipoJustificativaSaida && (
+                <>
+                  <br />
+                  <span style={{ fontSize: 13, fontWeight: 400, color: '#666' }}>Justificativa registrada.</span>
+                </>
+              )}
             </p>
           </div>
         )}
@@ -423,6 +628,12 @@ export default function CheckinPublicScreen({ clienteId }) {
             <p style={styles.sucessoTexto}>
               Solicitação de presença em atraso enviada, aguarde 10min para liberação pela liderança!
             </p>
+            <p style={{ fontSize: 13, color: '#666', marginTop: -6 }}>
+              Você pode sair e tentar de novo daqui a 10 minutos.
+            </p>
+            <button style={styles.botaoSecundario} onClick={reiniciar}>
+              Sair
+            </button>
           </div>
         )}
       </div>
@@ -444,9 +655,20 @@ const styles = {
   titulo: { margin: '0 0 4px', color: NAVY, fontSize: 20, textAlign: 'center' },
   subtitulo: { margin: '0 0 20px', color: '#666', fontSize: 15, textAlign: 'center', fontWeight: 600 },
   textoInfo: { fontSize: 15, color: '#333', textAlign: 'center', marginBottom: 16 },
+  textoAjuda: { fontSize: 12, color: '#999', textAlign: 'center', margin: '-10px 0 16px' },
 
   rotulo: { display: 'flex', flexDirection: 'column', fontSize: 14, fontWeight: 600, color: '#444', gap: 6, marginBottom: 16 },
   input: { padding: '13px 12px', borderRadius: 8, border: '1px solid #CCC', fontSize: 16, fontWeight: 400, background: '#FFF' },
+  textarea: {
+    padding: '13px 12px',
+    borderRadius: 8,
+    border: '1px solid #CCC',
+    fontSize: 16,
+    fontWeight: 400,
+    background: '#FFF',
+    fontFamily: 'inherit',
+    resize: 'vertical'
+  },
 
   fotoSlot: {
     width: '100%',
@@ -477,6 +699,18 @@ const styles = {
     fontSize: 17,
     background: ORANGE,
     color: '#FFF'
+  },
+  botaoSecundario: {
+    width: '100%',
+    padding: 14,
+    border: '1px solid #CCC',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontWeight: 600,
+    fontSize: 15,
+    background: '#FFF',
+    color: '#444',
+    marginTop: 14
   },
 
   sucesso: { textAlign: 'center', padding: '20px 0' },

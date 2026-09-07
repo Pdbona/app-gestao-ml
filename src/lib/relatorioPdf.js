@@ -73,14 +73,19 @@ export async function gerarRelatorioPdf({
 }
 
 // Colunas da tabela de presença — Data / Nome Completo / CPF / Turno /
-// Hora de Presença, nessa ordem (pedido do Pablo). Larguras calibradas
-// pra caber tudo entre as margens de 14 e 196mm (A4 retrato).
+// Hora de Presença / Hora de Saída, nessa ordem (pedido do Pablo, +
+// coluna de Saída em 04/09/2026 pra feature de registro de saída).
+// Larguras recalibradas pra caber a coluna nova entre as margens de 14 e
+// 196mm (A4 retrato) — Justificativa NÃO entra como coluna fixa (texto
+// livre, pode ser longo), é uma linha extra desenhada abaixo da linha do
+// colaborador quando presente (ver `desenharJustificativaSaida`).
 const COLUNAS_PRESENCA = [
-  { chave: 'data', rotulo: 'Data', x: 14, largura: 24 },
-  { chave: 'nome', rotulo: 'Nome Completo', x: 40, largura: 58 },
-  { chave: 'cpf', rotulo: 'CPF', x: 100, largura: 30 },
-  { chave: 'turno', rotulo: 'Turno', x: 132, largura: 28 },
-  { chave: 'hora', rotulo: 'Hora de Presença', x: 162, largura: 34 }
+  { chave: 'data', rotulo: 'Data', x: 14, largura: 20 },
+  { chave: 'nome', rotulo: 'Nome Completo', x: 36, largura: 46 },
+  { chave: 'cpf', rotulo: 'CPF', x: 84, largura: 26 },
+  { chave: 'turno', rotulo: 'Turno', x: 112, largura: 22 },
+  { chave: 'horaEntrada', rotulo: 'Hora Entrada', x: 136, largura: 26 },
+  { chave: 'horaSaida', rotulo: 'Hora Saída', x: 164, largura: 26 }
 ];
 
 // Trunca com "…" se o texto não couber na largura da coluna — nunca deixa
@@ -112,6 +117,38 @@ function desenharCabecalhoTabela(docPdf, y) {
 
 function periodoTurno(t) {
   return `${t.turnoHoraInicio || '--:--'}${t.turnoHoraFim ? ` às ${t.turnoHoraFim}` : ''}`;
+}
+
+function horaOuTraco(timestamp) {
+  return timestamp?.toMillis
+    ? new Date(timestamp.toMillis()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : '--:--';
+}
+
+// Justificativa de saída (adiantada/hora extra) não cabe numa coluna fixa
+// de tabela — desenhada como uma linha extra, indentada e em itálico,
+// logo abaixo da linha do colaborador, só quando presente. `docPdf.splitTextToSize`
+// quebra o texto em várias linhas se for longo, cada uma respeitando a
+// largura útil da tabela.
+function desenharJustificativaSaida(docPdf, linha, y) {
+  if (!linha.saidaJustificativa) return y;
+  const rotulo = linha.saidaTipoJustificativa === 'antecipada' ? 'Saída antecipada' : 'Hora extra';
+  const texto = `↳ ${rotulo}: ${linha.saidaJustificativa}`;
+  const linhasTexto = docPdf.splitTextToSize(texto, 176);
+  docPdf.setFont(undefined, 'italic');
+  docPdf.setFontSize(8);
+  docPdf.setTextColor('#666666');
+  linhasTexto.forEach((l) => {
+    if (y + 5 > 285) {
+      docPdf.addPage();
+      y = 20;
+    }
+    docPdf.text(l, 20, y);
+    y += 4.5;
+  });
+  docPdf.setTextColor('#000000');
+  docPdf.setFont(undefined, 'normal');
+  return y + 1.5;
 }
 
 // Linha de subtotal (itálico, cinza) — turno dentro de um dia, ou o
@@ -178,18 +215,14 @@ export async function gerarRelatorioPresencaPdf({ clienteNome, dataInicio, dataF
         }
         indiceZebra += 1;
         docPdf.setFontSize(9);
-        docPdf.text(truncarParaLargura(docPdf, formatarDataBr(linha.data), 22), 14, y);
-        docPdf.text(truncarParaLargura(docPdf, linha.colaboradorNome, 56), 40, y);
-        docPdf.text(truncarParaLargura(docPdf, formatarCpf(linha.cpf), 28), 100, y);
-        docPdf.text(truncarParaLargura(docPdf, linha.turnoNome, 26), 132, y);
-        docPdf.text(
-          linha.dataHoraCheckin?.toMillis
-            ? new Date(linha.dataHoraCheckin.toMillis()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-            : '--:--',
-          162,
-          y
-        );
+        docPdf.text(truncarParaLargura(docPdf, formatarDataBr(linha.data), 18), 14, y);
+        docPdf.text(truncarParaLargura(docPdf, linha.colaboradorNome, 44), 36, y);
+        docPdf.text(truncarParaLargura(docPdf, formatarCpf(linha.cpf), 24), 84, y);
+        docPdf.text(truncarParaLargura(docPdf, linha.turnoNome, 20), 112, y);
+        docPdf.text(horaOuTraco(linha.dataHoraCheckin), 136, y);
+        docPdf.text(horaOuTraco(linha.dataHoraSaida), 164, y);
         y += 6.5;
+        y = desenharJustificativaSaida(docPdf, linha, y);
       });
       y = desenharSubtotal(
         docPdf,

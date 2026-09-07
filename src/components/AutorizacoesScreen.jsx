@@ -6,8 +6,9 @@ import { formatarDataBr } from '../lib/data';
 
 // Fila de solicitações de presença em atraso (CheckinPublicScreen.jsx cria
 // um doc em `solicitacoesPresenca` quando o colaborador tenta confirmar
-// presença entre 1h e 3h depois do início do turno único planejado pro
-// dia). É uma tela própria — não embutida no Dashboard — de propósito: a
+// presença mais de 10min depois do início do turno planejado — sem prazo
+// de expiração automática, fica pendente até a liderança aprovar/negar
+// aqui). É uma tela própria — não embutida no Dashboard — de propósito: a
 // permissão `abas.autorizacoes` é desacoplada de `abas.dashboard`, pra dar
 // pra um líder de turno autorizar sem precisar de acesso ao Dashboard
 // inteiro. Mesmo padrão visual do modal de "falta" do Dashboard (overlay +
@@ -83,8 +84,8 @@ export default function AutorizacoesScreen({ usuario }) {
     <div>
       <h2 style={ui.sectionTitle}>Autorizações de presença</h2>
       <p style={ui.placeholderNote}>
-        Solicitações de colaboradores que tentaram confirmar presença mais de 1h depois do início
-        do turno único planejado pro dia — autorize ou negue pra liberar (ou não) o check-in.
+        Solicitações de colaboradores que tentaram confirmar presença mais de 10min depois do início
+        do turno planejado pro dia — autorize ou negue pra liberar (ou não) o check-in.
       </p>
 
       {erroCarga ? (

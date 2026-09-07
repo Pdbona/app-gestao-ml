@@ -76,10 +76,12 @@ export function formatarHorario(valor) {
   return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-// Minutos decorridos desde o horaInicio ("HH:mm", turno) até `agora` — mesma
-// técnica de parse já usada em DashboardTab.jsx (split(':') + setHours),
-// centralizada aqui pra não duplicar de novo. Negativo se o turno ainda não
-// começou. `null` se horaInicio não estiver cadastrado.
+// Minutos decorridos desde um horário ("HH:mm") até `agora` — usada tanto
+// pro horaInicio do turno (janela de chegada) quanto pro horaFim (janela de
+// saída, ver abaixo), mesma técnica de parse já usada em DashboardTab.jsx
+// (split(':') + setHours), centralizada aqui pra não duplicar de novo.
+// Negativo se o horário de referência ainda não chegou. `null` se o
+// horário não estiver cadastrado.
 export function minutosDesdeInicioTurno(horaInicio, agora = new Date()) {
   if (!horaInicio) return null;
   const [h, m] = horaInicio.split(':').map(Number);
@@ -89,21 +91,44 @@ export function minutosDesdeInicioTurno(horaInicio, agora = new Date()) {
   return Math.round((agora.getTime() - inicio.getTime()) / 60000);
 }
 
-export const TOLERANCIA_JANELA_NORMAL_MINUTOS = 60;
-export const LIMITE_JANELA_ATRASO_MINUTOS = 180;
+// Janela de CHEGADA (04/09/2026, substitui a janela antiga de 0/+60/+180min
+// — pedido do Pablo: colaborador pode chegar até 10min antes do início, e a
+// tolerância de atraso sem pedir autorização também caiu pra 10min). O teto
+// de 3h que antes bloqueava de vez ("expirado") foi removido de propósito —
+// confirmado com o Pablo via AskUserQuestion: depois de 10min de atraso a
+// solicitação de autorização fica pendente SEM prazo de expiração
+// automática, só a liderança aprova/nega em Autorizações.
+export const TOLERANCIA_ENTRADA_MINUTOS = 10;
 
-// Classifica o momento do check-in em relação ao horaInicio do turno único
-// planejado pro dia: 'sem_horario' (turno sem horaInicio cadastrado, não
-// bloqueia por erro de cadastro) | 'antes' (turno ainda não começou) |
-// 'normal' (dentro da tolerância de 1h — segue direto) | 'atraso' (de 1h a
-// 3h — pede autorização da liderança) | 'expirado' (mais de 3h — bloqueia).
-export function statusJanelaTurno(horaInicio, agora = new Date()) {
+// Classifica a tentativa de registrar CHEGADA em relação ao horaInicio do
+// turno: 'sem_horario' (turno sem horaInicio cadastrado, não bloqueia por
+// erro de cadastro) | 'antes' (mais de 10min antes do início — turno ainda
+// não começou) | 'normal' (de -10min a +10min do início — segue direto) |
+// 'atraso' (mais de 10min depois — pede autorização da liderança).
+export function statusJanelaEntrada(horaInicio, agora = new Date()) {
   const minutos = minutosDesdeInicioTurno(horaInicio, agora);
   if (minutos == null) return 'sem_horario';
-  if (minutos < 0) return 'antes';
-  if (minutos <= TOLERANCIA_JANELA_NORMAL_MINUTOS) return 'normal';
-  if (minutos <= LIMITE_JANELA_ATRASO_MINUTOS) return 'atraso';
-  return 'expirado';
+  if (minutos < -TOLERANCIA_ENTRADA_MINUTOS) return 'antes';
+  if (minutos <= TOLERANCIA_ENTRADA_MINUTOS) return 'normal';
+  return 'atraso';
+}
+
+// Janela de SAÍDA (feature nova, 04/09/2026) — mesma folga de 10min pros
+// dois lados do horaFim do turno, mas NUNCA bloqueia: fora da janela só
+// passa a exigir uma justificativa (ver CheckinPublicScreen.jsx), gravada
+// junto do registro pra compor o relatório de presença (folha/cobrança).
+export const TOLERANCIA_SAIDA_MINUTOS = 10;
+
+// 'sem_horario' (turno sem horaFim cadastrado, não exige justificativa) |
+// 'antecipada' (mais de 10min ANTES do fim — pode gerar desconto em folha)
+// | 'normal' (janela de ±10min) | 'atrasada' (mais de 10min DEPOIS do fim —
+// hora extra, precisa justificar pra cobrança ao cliente).
+export function statusJanelaSaida(horaFim, agora = new Date()) {
+  const minutos = minutosDesdeInicioTurno(horaFim, agora);
+  if (minutos == null) return 'sem_horario';
+  if (minutos < -TOLERANCIA_SAIDA_MINUTOS) return 'antecipada';
+  if (minutos <= TOLERANCIA_SAIDA_MINUTOS) return 'normal';
+  return 'atrasada';
 }
 
 // { inicio, fim } (ISO) da quinzena corrente a partir de diaISO: dia 1-15 do

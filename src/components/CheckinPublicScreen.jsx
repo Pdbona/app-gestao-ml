@@ -169,6 +169,34 @@ export default function CheckinPublicScreen({ clienteId }) {
         return;
       }
 
+      // Trava de equipe completa (pedido do Pablo, 07/09/2026, depois de
+      // ver no Dashboard um turno com mais gente confirmada do que o
+      // planejado): não deixa confirmar chegada além da quantidade
+      // planejada pro turno. Conta TODA presença já registrada hoje nesse
+      // turno (mesmo quem já saiu) — mesmo critério de contagem que
+      // "Presença do dia" no Dashboard já usa. Planejamento tem id
+      // determinístico (`${clienteId}_${data}_${turnoId}`, ver
+      // PlanejamentoScreen.jsx), então dá pra buscar direto sem query.
+      const planSnap = await getDoc(doc(db, 'planejamentoOperacional', `${clienteId}_${hojeISO()}_${turno.id}`));
+      if (planSnap.exists()) {
+        const planejado = Number(planSnap.data().qtdMdo) || 0;
+        const presencasTurnoSnap = await getDocs(
+          query(
+            collection(db, 'presencas'),
+            where('clienteId', '==', clienteId),
+            where('turnoId', '==', turno.id),
+            where('data', '==', hojeISO())
+          )
+        );
+        if (planejado > 0 && presencasTurnoSnap.size >= planejado) {
+          setMensagemBloqueio(
+            `A equipe do turno ${turno.nome} já está completa hoje (${presencasTurnoSnap.size} de ${planejado} confirmados).`
+          );
+          setEtapa('bloqueado');
+          return;
+        }
+      }
+
       const solicitacaoSnap = await getDoc(doc(db, 'solicitacoesPresenca', solicitacaoId));
       if (solicitacaoSnap.exists()) {
         const solicitacao = solicitacaoSnap.data();
@@ -193,10 +221,12 @@ export default function CheckinPublicScreen({ clienteId }) {
 
       const statusJanela = statusJanelaEntrada(turno.horaInicio);
       if (statusJanela === 'antes') {
+        // Só o horário de INÍCIO importa aqui — mostrar também o horaFim
+        // (ex. "até 03:00" num turno Noturno que cruza a meia-noite)
+        // confundia, lendo como se fosse alguma outra janela/prazo (Pablo
+        // reportou em 07/09/2026 vendo a tela real no celular).
         setMensagemBloqueio(
-          `O turno ${turno.nome} começa às ${turno.horaInicio}${
-            turno.horaFim ? ` (até ${turno.horaFim})` : ''
-          }. Você pode confirmar a chegada a partir de 10 minutos antes.`
+          `O turno ${turno.nome} começa às ${turno.horaInicio}. Você pode confirmar a chegada a partir de 10 minutos antes.`
         );
         setEtapa('bloqueado');
         return;
@@ -612,6 +642,9 @@ export default function CheckinPublicScreen({ clienteId }) {
                 </>
               )}
             </p>
+            <button style={styles.botaoSecundario} onClick={reiniciar}>
+              Fechar
+            </button>
           </div>
         )}
 
@@ -619,6 +652,9 @@ export default function CheckinPublicScreen({ clienteId }) {
           <div style={styles.sucesso}>
             <p style={styles.sucessoIcone}>❌</p>
             <p style={{ ...styles.sucessoTexto, color: '#D32F2F' }}>{mensagemBloqueio}</p>
+            <button style={styles.botaoSecundario} onClick={reiniciar}>
+              Fechar
+            </button>
           </div>
         )}
 

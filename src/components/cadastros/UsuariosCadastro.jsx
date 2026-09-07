@@ -11,13 +11,14 @@ import {
   orderBy
 } from 'firebase/firestore';
 import { ui } from '../../lib/styles';
-import { PERFIL_ADMIN_PADRAO } from '../../lib/permissoes';
+import { PERFIL_ADMIN_PADRAO, REGEX_SENHA_LINK_PROPRIO } from '../../lib/permissoes';
 import PermissoesMatrix from '../PermissoesMatrix';
 
 const USUARIO_VAZIO = { nome: '', senha: '', perfilId: PERFIL_ADMIN_PADRAO.id, ativo: true };
 
 export default function UsuariosCadastro({ permissoes }) {
-  const perm = permissoes.cadastros?.usuarios || {};
+  const temAcesso = Boolean(permissoes.acessos?.usuarios);
+  const perm = { criar: temAcesso, editar: temAcesso, deletar: temAcesso };
 
   const [usuarios, setUsuarios] = useState([]);
   const [perfis, setPerfis] = useState([]);
@@ -103,14 +104,28 @@ export default function UsuariosCadastro({ permissoes }) {
       setErro('Informe a senha.');
       return;
     }
-    // O login agora é só por senha (sem digitar o nome) — precisa ser única
-    // entre usuários ativos, senão o sistema não sabe qual conta é qual.
-    const colisao = usuarios.some(
-      (u) => u.id !== editandoId && u.ativo !== false && u.senha === form.senha
-    );
-    if (colisao) {
-      setErro('Essa senha já está em uso por outro usuário ativo. O login é só por senha, então cada uma precisa ser única.');
-      return;
+    const perfilDoUsuario = getPerfil(form.perfilId);
+    if (perfilDoUsuario.linkProprio) {
+      // Usuário de um perfil com Link de acesso próprio: a pessoa escolhe
+      // o PRÓPRIO nome antes de digitar a senha (ver AcessoProprioScreen.jsx),
+      // então a senha só precisa confirmar quem já foi selecionado — não
+      // precisa ser única entre TODOS os usuários do sistema, só seguir o
+      // formato curto (4 a 6 alfanuméricos, igual ao padrão da Superior).
+      if (!REGEX_SENHA_LINK_PROPRIO.test(form.senha)) {
+        setErro('Senha inválida — precisa ter de 4 a 6 caracteres (letras e/ou números).');
+        return;
+      }
+    } else {
+      // Login pela porta padrão é só por senha (sem digitar o nome) —
+      // precisa ser única entre usuários ativos, senão o sistema não sabe
+      // qual conta é qual.
+      const colisao = usuarios.some(
+        (u) => u.id !== editandoId && u.ativo !== false && u.senha === form.senha
+      );
+      if (colisao) {
+        setErro('Essa senha já está em uso por outro usuário ativo. O login é só por senha, então cada uma precisa ser única.');
+        return;
+      }
     }
     setSalvando(true);
     setErro('');
@@ -167,10 +182,11 @@ export default function UsuariosCadastro({ permissoes }) {
               <input style={ui.input} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
             </label>
             <label style={ui.label}>
-              Senha (alfanumérica) *
+              {getPerfil(form.perfilId).linkProprio ? 'Senha (4 a 6, letras/números) *' : 'Senha (alfanumérica) *'}
               <input
                 style={ui.input}
                 value={form.senha}
+                maxLength={getPerfil(form.perfilId).linkProprio ? 6 : undefined}
                 onChange={(e) => setForm({ ...form, senha: e.target.value })}
               />
             </label>

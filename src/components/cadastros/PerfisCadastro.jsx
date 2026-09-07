@@ -1,14 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { ui } from '../../lib/styles';
-import { PERFIL_ADMIN_PADRAO, permissoesVazias } from '../../lib/permissoes';
+import { ui, NAVY } from '../../lib/styles';
+import { PERFIL_ADMIN_PADRAO, permissoesVazias, slugUnico } from '../../lib/permissoes';
 import PermissoesMatrix from '../PermissoesMatrix';
 
-const PERFIL_VAZIO = { nome: '', descricao: '', permissoes: permissoesVazias() };
+const PERFIL_VAZIO = { nome: '', descricao: '', linkProprio: false, permissoes: permissoesVazias() };
+
+// URL do Link de acesso próprio — mesmo padrão de montarUrlCheckin em
+// ClientesCadastro.jsx (`?acesso=<slug>`, lido em App.jsx por
+// AcessoProprioScreen.jsx), funciona em qualquer host estático sem rota
+// por path.
+function montarUrlAcesso(slug) {
+  const base = `${window.location.origin}${process.env.PUBLIC_URL}/`;
+  return `${base}?acesso=${slug}`;
+}
 
 export default function PerfisCadastro({ permissoes }) {
-  const perm = permissoes.cadastros?.perfis || {};
+  const temAcesso = Boolean(permissoes.acessos?.perfis);
+  const perm = { criar: temAcesso, editar: temAcesso, deletar: temAcesso };
 
   const [perfis, setPerfis] = useState([]);
   const [carregando, setCarregando] = useState(true);
@@ -46,6 +56,7 @@ export default function PerfisCadastro({ permissoes }) {
     setForm({
       nome: perfil.nome || '',
       descricao: perfil.descricao || '',
+      linkProprio: Boolean(perfil.linkProprio),
       permissoes: perfil.permissoes || permissoesVazias()
     });
     setEditandoId(perfil.id);
@@ -68,10 +79,21 @@ export default function PerfisCadastro({ permissoes }) {
     setSalvando(true);
     setErro('');
     try {
+      // Slug só existe (e só é recalculado) quando "Link de acesso
+      // próprio" está marcado — desmarcar apaga o slug (o link para de
+      // funcionar; os usuários do perfil voltam a precisar da porta
+      // padrão, se algum outro acesso ainda fizer sentido pra eles).
+      const payload = {
+        nome: form.nome,
+        descricao: form.descricao,
+        linkProprio: form.linkProprio,
+        slug: form.linkProprio ? slugUnico(form.nome, perfis, editandoId) : null,
+        permissoes: form.permissoes
+      };
       if (editandoId) {
-        await updateDoc(doc(db, 'perfis', editandoId), form);
+        await updateDoc(doc(db, 'perfis', editandoId), payload);
       } else {
-        await addDoc(collection(db, 'perfis'), form);
+        await addDoc(collection(db, 'perfis'), payload);
       }
       cancelar();
     } catch (e) {
@@ -122,6 +144,30 @@ export default function PerfisCadastro({ permissoes }) {
             </label>
           </div>
 
+          <label style={styles.linkProprioLabel}>
+            <input
+              type="checkbox"
+              checked={form.linkProprio}
+              onChange={(e) => setForm({ ...form, linkProprio: e.target.checked })}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              <strong style={{ color: NAVY }}>Link de acesso próprio</strong>
+              <br />
+              <span style={{ fontSize: 12, color: '#777' }}>
+                Em vez de entrar pela porta padrão com senha, cada usuário deste perfil recebe um link à
+                parte, com tela própria: seleciona o nome e digita uma senha (4 a 6 caracteres, pode ter
+                letras).
+              </span>
+            </span>
+          </label>
+
+          {form.linkProprio && form.nome.trim() && (
+            <p style={styles.previewLink}>
+              🔗 Link: <strong>{montarUrlAcesso(slugUnico(form.nome, perfis, editandoId))}</strong>
+            </p>
+          )}
+
           <div style={{ marginTop: 10, marginBottom: 16 }}>
             <PermissoesMatrix value={form.permissoes} onChange={(p) => setForm({ ...form, permissoes: p })} />
           </div>
@@ -155,7 +201,14 @@ export default function PerfisCadastro({ permissoes }) {
             <tbody>
               {listaCompleta.map((p) => (
                 <tr key={p.id}>
-                  <td style={ui.td}>{p.nome}</td>
+                  <td style={ui.td}>
+                    {p.nome}
+                    {p.linkProprio && p.slug && (
+                      <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>
+                        🔗 {montarUrlAcesso(p.slug)}
+                      </div>
+                    )}
+                  </td>
                   <td style={ui.td}>{p.descricao || '-'}</td>
                   <td style={ui.td}>
                     <span style={{ ...ui.badge, ...(p.sistema ? ui.badgeAzul : ui.badgeCinza) }}>
@@ -189,3 +242,26 @@ export default function PerfisCadastro({ permissoes }) {
     </div>
   );
 }
+
+const styles = {
+  linkProprioLabel: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    fontSize: 14,
+    marginBottom: 12,
+    padding: '10px 14px',
+    background: '#F8F9FB',
+    borderRadius: 6,
+    cursor: 'pointer'
+  },
+  previewLink: {
+    fontSize: 13,
+    color: NAVY,
+    background: '#F0F3F7',
+    borderRadius: 6,
+    padding: '8px 12px',
+    margin: '0 0 16px',
+    wordBreak: 'break-all'
+  }
+};

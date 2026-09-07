@@ -2,61 +2,66 @@
 // RBAC — schema de permissões, perfil fixo de bootstrap e helpers
 // ============================================================
 //
-// Toda permissão é organizada em duas camadas:
-//   1. `abas`        — quais telas de topo o usuário vê (dashboard, cadastros,
-//      coletor)
-//   2. `cadastros`   — dentro de Cadastros, o que cada seção permite
-//      (visualizar/criar/editar/deletar)
+// Simplificado em 07/09/2026 (pedido do Pablo: "faça igual à tela de
+// perfil do app da Superior") — modelo anterior tinha 2 camadas (`abas`
+// de topo + `cadastros` com matriz Ver/Criar/Editar/Excluir por seção).
+// Agora é um catálogo FLAT único: cada acesso é um único flag (tem ou não
+// tem — sem granularidade de ação), igual ao padrão já usado no app de
+// Gestão Operacional da Superior Transportes.
 //
-// `abas.coletor` é especial: se for a ÚNICA aba habilitada pro usuário
+// `area: 'aba'` = aba de topo na sidebar (Dashboard, Planejamento...).
+// `area: 'cadastro'` = seção dentro de "Cadastros" — a aba "Cadastros" em
+// si nem existe mais como flag próprio: aparece sozinha na sidebar assim
+// que pelo menos 1 seção de cadastro estiver marcada (ver
+// `temAlgumCadastro` em GestaoML.jsx). `grupo` (só entre as de cadastro)
+// continua agrupando Turno/Tipo de Operação/Operação sob "Operação" no
+// 2º nível de navegação, como já era.
+//
+// `coletor` é especial: se for o ÚNICO acesso de `area: 'aba'` habilitado
 // (perfil "exclusivo" de Coletor), o login já leva direto pra tela do
-// Coletor em vez do Dashboard — ver `abaInicial()` em GestaoML.jsx.
+// Coletor em vez do Dashboard — ver `abaInicial()`.
 //
 // Um usuário tem um `perfilId` (perfil base, cadastrado em Cadastros →
-// Perfis) e, opcionalmente, `permissoesCustom` — um objeto PARCIAL no mesmo
-// formato que sobrescreve pontualmente o perfil base só para aquele usuário
-// (ex: um Conferente que também pode editar Fluxos, sem virar um perfil novo
-// pra isso). `mergePermissoes` faz essa combinação.
-
-// `grupo` agrupa seções relacionadas dentro de Cadastros (ex: Tipo de
-// Operação e Operação vivem juntas sob "Operação" na navegação), sem mudar
-// o `id` de cada uma — é só uma dica de UI pro CadastrosScreen.
-export const SECOES_CADASTRO = [
-  { id: 'clientes', label: 'Cliente' },
-  { id: 'perfis', label: 'Perfil' },
-  { id: 'usuarios', label: 'Usuários' },
-  { id: 'colaboradores', label: 'Colaborador' },
-  { id: 'turnos', label: 'Turno', grupo: 'operacao' },
-  { id: 'tiposOperacao', label: 'Tipo de Operação', grupo: 'operacao' },
-  { id: 'fluxos', label: 'Operação', grupo: 'operacao' }
+// Perfis) e, opcionalmente, `permissoesCustom` — override PARCIAL do
+// mesmo formato, só pra aquele usuário. `mergePermissoes` combina os dois.
+export const CATALOGO_ACESSOS = [
+  { id: 'dashboard', label: 'Dashboard', icone: '📊', area: 'aba' },
+  { id: 'planejamento', label: 'Planejamento', icone: '🗓️', area: 'aba' },
+  { id: 'relatorios', label: 'Relatórios', icone: '📈', area: 'aba' },
+  { id: 'autorizacoes', label: 'Autorizações', icone: '🔔', area: 'aba' },
+  { id: 'coletor', label: 'Coletor', icone: '📱', area: 'aba' },
+  { id: 'clientes', label: 'Cliente', icone: '🏢', area: 'cadastro' },
+  { id: 'perfis', label: 'Perfil', icone: '🛡️', area: 'cadastro' },
+  { id: 'usuarios', label: 'Usuários', icone: '👤', area: 'cadastro' },
+  { id: 'colaboradores', label: 'Colaborador', icone: '🧑‍🔧', area: 'cadastro' },
+  { id: 'turnos', label: 'Turno', icone: '🕐', area: 'cadastro', grupo: 'operacao' },
+  { id: 'tiposOperacao', label: 'Tipo de Operação', icone: '⚙️', area: 'cadastro', grupo: 'operacao' },
+  { id: 'fluxos', label: 'Operação', icone: '🔀', area: 'cadastro', grupo: 'operacao' }
 ];
 
 export const GRUPOS_CADASTRO = {
   operacao: { label: 'Operação' }
 };
 
-export const ACOES_CADASTRO = ['visualizar', 'criar', 'editar', 'deletar'];
+// Mantido só como "view" filtrada do catálogo pra quem já lia
+// SECOES_CADASTRO (CadastrosScreen.jsx, montarNavegacaoCadastros) — mesmo
+// shape de antes (id/label/grupo), sem precisar mudar quem consome.
+export const SECOES_CADASTRO = CATALOGO_ACESSOS.filter((a) => a.area === 'cadastro');
 
 export function permissoesVazias() {
-  const cadastros = {};
-  SECOES_CADASTRO.forEach((s) => {
-    cadastros[s.id] = { visualizar: false, criar: false, editar: false, deletar: false };
+  const acessos = {};
+  CATALOGO_ACESSOS.forEach((a) => {
+    acessos[a.id] = false;
   });
-  return {
-    abas: { dashboard: true, cadastros: false, coletor: false, planejamento: false, relatorios: false, autorizacoes: false },
-    cadastros
-  };
+  return { acessos };
 }
 
 export function permissoesTotais() {
-  const cadastros = {};
-  SECOES_CADASTRO.forEach((s) => {
-    cadastros[s.id] = { visualizar: true, criar: true, editar: true, deletar: true };
+  const acessos = {};
+  CATALOGO_ACESSOS.forEach((a) => {
+    acessos[a.id] = true;
   });
-  return {
-    abas: { dashboard: true, cadastros: true, coletor: true, planejamento: true, relatorios: true, autorizacoes: true },
-    cadastros
-  };
+  return { acessos };
 }
 
 // Perfil "de fábrica": sempre existe, mesmo sem nenhum dado no Firestore
@@ -68,6 +73,7 @@ export const PERFIL_ADMIN_PADRAO = {
   nome: 'Administrador',
   descricao: 'Acesso total ao sistema (perfil de sistema, não pode ser excluído).',
   sistema: true,
+  linkProprio: false,
   permissoes: permissoesTotais()
 };
 
@@ -77,38 +83,26 @@ export const PERFIL_ADMIN_PADRAO = {
 export function mergePermissoes(base, overrides) {
   const permBase = base || permissoesVazias();
   if (!overrides) return permBase;
-
-  const abas = { ...permBase.abas, ...(overrides.abas || {}) };
-  const cadastros = {};
-  SECOES_CADASTRO.forEach((s) => {
-    cadastros[s.id] = {
-      ...(permBase.cadastros?.[s.id] || {}),
-      ...(overrides.cadastros?.[s.id] || {})
-    };
-  });
-  return { abas, cadastros };
+  return { acessos: { ...permBase.acessos, ...(overrides.acessos || {}) } };
 }
 
-export function temPermissaoCadastro(permissoes, secao, acao) {
-  return Boolean(permissoes?.cadastros?.[secao]?.[acao]);
-}
-
-// Aba em que o usuário cai logo após o login. Se "coletor" for a ÚNICA aba
-// habilitada (perfil exclusivo de coletor), vai direto pra lá — senão,
-// segue o padrão de sempre: Dashboard.
+// Aba em que o usuário cai logo após o login. Se "coletor" for o ÚNICO
+// acesso de topo habilitado (perfil exclusivo de coletor), vai direto pra
+// lá — senão, segue o padrão de sempre: Dashboard.
 export function abaInicial(permissoes) {
-  const abas = permissoes?.abas || {};
-  const outras = Object.keys(abas).filter((k) => k !== 'coletor' && abas[k]);
-  if (abas.coletor && outras.length === 0) return 'coletor';
+  const acessos = permissoes?.acessos || {};
+  const outrasAbas = CATALOGO_ACESSOS.filter((a) => a.area === 'aba' && a.id !== 'coletor' && acessos[a.id]);
+  if (acessos.coletor && outrasAbas.length === 0) return 'coletor';
   return 'dashboard';
 }
 
 // Monta a árvore de navegação de 1º nível de Cadastros a partir das seções
 // visíveis pro usuário: seções soltas (sem `grupo`) viram um item; seções
-// com o mesmo `grupo` (ex: Tipo de Operação + Operação) viram um único item
-// de grupo. Compartilhado entre a sidebar (GestaoML) e a tela de Cadastros.
+// com o mesmo `grupo` (ex: Tipo de Operação + Operação + Turno) viram um
+// único item de grupo. Compartilhado entre a sidebar (GestaoML) e a tela
+// de Cadastros.
 export function montarNavegacaoCadastros(permissoes) {
-  const secoesVisiveis = SECOES_CADASTRO.filter((s) => permissoes?.cadastros?.[s.id]?.visualizar);
+  const secoesVisiveis = SECOES_CADASTRO.filter((s) => permissoes?.acessos?.[s.id]);
   const nivel1 = [];
   const gruposVistos = new Set();
 
@@ -129,3 +123,41 @@ export function montarNavegacaoCadastros(permissoes) {
 
   return nivel1;
 }
+
+// ======== Link de acesso próprio (07/09/2026) ========
+// Um perfil pode marcar `linkProprio: true` e ganhar uma URL própria
+// (`?acesso=<slug>`, ver AcessoProprioScreen.jsx) — quem entra por ela
+// pula a porta padrão (senha única, sem nome) e em vez disso escolhe o
+// PRÓPRIO nome (dentre os usuários daquele perfil) e digita a própria
+// senha curta. Pensado pro futuro de clientes da ML (Belmicro, Wepink...)
+// acessarem só as telas liberadas pro perfil deles, com um link só deles
+// — ainda NÃO restringe os DADOS ao cliente (ex: Relatórios continua
+// pedindo escolher o Cliente/Local normalmente), só o ACESSO por link
+// próprio + a lista de telas.
+function normalizarSlug(texto) {
+  return (texto || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// Gera um slug único entre os perfis existentes (acrescenta -2, -3... em
+// caso de colisão) — `idAtual` exclui o próprio perfil da checagem de
+// colisão quando é uma edição (não um perfil novo).
+export function slugUnico(nome, perfisExistentes, idAtual) {
+  const base = normalizarSlug(nome) || 'perfil';
+  const usados = new Set(perfisExistentes.filter((p) => p.id !== idAtual && p.slug).map((p) => p.slug));
+  if (!usados.has(base)) return base;
+  let n = 2;
+  while (usados.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
+// Regra de senha pro login por Link de acesso próprio (4 a 6 caracteres
+// alfanuméricos — mais permissiva que exigir só dígitos, já que aqui não
+// tem PIN numérico nenhum, é "senha" mesmo). Perfis SEM link próprio
+// continuam sem essa restrição (só exigem não-vazio, ver
+// UsuariosCadastro.jsx).
+export const REGEX_SENHA_LINK_PROPRIO = /^[A-Za-z0-9]{4,6}$/;

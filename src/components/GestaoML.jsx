@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
-import { PERFIL_ADMIN_PADRAO, mergePermissoes, montarNavegacaoCadastros, abaInicial } from '../lib/permissoes';
+import { PERFIL_ADMIN_PADRAO, mergePermissoes, montarNavegacaoCadastros, abaInicial, SECOES_CADASTRO } from '../lib/permissoes';
 import { NAVY, NAVY_LIGHT, ORANGE, ui } from '../lib/styles';
 import DashboardTab from './DashboardTab';
 import CadastrosScreen from './cadastros/CadastrosScreen';
@@ -146,9 +146,16 @@ function LoginScreen({ onLoginSuccess }) {
 // ============================================================
 // COMPONENTE PRINCIPAL
 // ============================================================
-export default function GestaoML() {
-  const [usuarioAtivo, setUsuarioAtivo] = useState(null);
-  const [abaAtual, setAbaAtual] = useState('dashboard');
+// `usuarioInicial`/`onSair` (07/09/2026) — usados só por
+// AcessoProprioScreen.jsx: quem entra pelo Link de acesso próprio de um
+// perfil já chega autenticado (escolheu o nome + digitou a senha curta
+// numa tela própria, antes de chegar aqui), então pula a LoginScreen
+// padrão; `onSair`, se vier, é chamado no lugar do logout normal — volta
+// pro seletor de nome do MESMO link, em vez de expor a porta padrão
+// (senha única) de todo o sistema.
+export default function GestaoML({ usuarioInicial = null, onSair = null }) {
+  const [usuarioAtivo, setUsuarioAtivo] = useState(usuarioInicial);
+  const [abaAtual, setAbaAtual] = useState(usuarioInicial ? abaInicial(usuarioInicial.permissoes) : 'dashboard');
   const [cadastrosExpandido, setCadastrosExpandido] = useState(false);
   const [secaoCadastroAtual, setSecaoCadastroAtual] = useState(null);
   const [pendentesAutorizacao, setPendentesAutorizacao] = useState(0);
@@ -167,7 +174,7 @@ export default function GestaoML() {
   // ANTES do `if (!usuarioAtivo)` porque hook não pode ser condicional; o
   // próprio efeito decide se inscreve ou não.
   useEffect(() => {
-    if (!usuarioAtivo?.permissoes?.abas?.autorizacoes) {
+    if (!usuarioAtivo?.permissoes?.acessos?.autorizacoes) {
       setPendentesAutorizacao(0);
       return undefined;
     }
@@ -184,12 +191,14 @@ export default function GestaoML() {
   }
 
   const permissoes = usuarioAtivo.permissoes;
-  const temDashboard = Boolean(permissoes.abas?.dashboard);
-  const temCadastros = Boolean(permissoes.abas?.cadastros);
-  const temColetor = Boolean(permissoes.abas?.coletor);
-  const temPlanejamento = Boolean(permissoes.abas?.planejamento);
-  const temRelatorios = Boolean(permissoes.abas?.relatorios);
-  const temAutorizacoes = Boolean(permissoes.abas?.autorizacoes);
+  const temDashboard = Boolean(permissoes.acessos?.dashboard);
+  // "Cadastros" não é mais um flag próprio — aparece assim que pelo menos
+  // 1 seção de cadastro estiver marcada (modelo flat, ver lib/permissoes.js).
+  const temCadastros = SECOES_CADASTRO.some((s) => permissoes.acessos?.[s.id]);
+  const temColetor = Boolean(permissoes.acessos?.coletor);
+  const temPlanejamento = Boolean(permissoes.acessos?.planejamento);
+  const temRelatorios = Boolean(permissoes.acessos?.relatorios);
+  const temAutorizacoes = Boolean(permissoes.acessos?.autorizacoes);
   const navCadastros = temCadastros ? montarNavegacaoCadastros(permissoes) : [];
   const secaoAtual = navCadastros.find((n) => n.id === secaoCadastroAtual) || navCadastros[0];
 
@@ -255,7 +264,11 @@ export default function GestaoML() {
         </div>
         <div style={{ ...styles.appHeaderRight, ...styles.userBox }}>
           <span className="app-username">{usuarioAtivo.nome}</span>
-          <button style={styles.logoutButton} className="app-logout-button" onClick={() => setUsuarioAtivo(null)}>
+          <button
+            style={styles.logoutButton}
+            className="app-logout-button"
+            onClick={() => (onSair ? onSair() : setUsuarioAtivo(null))}
+          >
             Sair
           </button>
         </div>

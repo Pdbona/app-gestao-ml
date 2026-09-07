@@ -10,7 +10,8 @@ const COLABORADOR_VAZIO = { nome: '', cpf: '', ativo: true };
 // cadastro que o check-in público (CheckinPublicScreen.jsx) valida quem
 // está confirmando presença no Cliente/Local.
 export default function ColaboradoresCadastro({ permissoes }) {
-  const perm = permissoes.cadastros?.colaboradores || {};
+  const temAcesso = Boolean(permissoes.acessos?.colaboradores);
+  const perm = { criar: temAcesso, editar: temAcesso, deletar: temAcesso };
 
   const [colaboradores, setColaboradores] = useState([]);
   const [carregando, setCarregando] = useState(true);

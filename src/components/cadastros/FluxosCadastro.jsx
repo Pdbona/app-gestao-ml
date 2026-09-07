@@ -11,7 +11,8 @@ const FLUXO_VAZIO = { nome: '', fotosInicio: 0, fotosFim: 0, ativo: true };
 // tabela reduzidos) — usado lado a lado com Tipo de Operação em
 // CadastrosScreen.jsx, a pedido do Pablo, em vez de uma tela cheia separada.
 export default function FluxosCadastro({ permissoes, compacto = false }) {
-  const perm = permissoes.cadastros?.fluxos || {};
+  const temAcesso = Boolean(permissoes.acessos?.fluxos);
+  const perm = { criar: temAcesso, editar: temAcesso, deletar: temAcesso };
 
   const [fluxos, setFluxos] = useState([]);
   const [carregando, setCarregando] = useState(true);

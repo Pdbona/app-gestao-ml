@@ -28,7 +28,8 @@ const STATUS_LABEL = {
 // esse vínculo é feito depois, na tela do Coletor, na hora de registrar de
 // verdade (o coletor escolhe a Operação e o Tipo separadamente).
 export default function TiposOperacaoCadastro({ permissoes }) {
-  const perm = permissoes.cadastros?.tiposOperacao || {};
+  const temAcesso = Boolean(permissoes.acessos?.tiposOperacao);
+  const perm = { criar: temAcesso, editar: temAcesso, deletar: temAcesso };
 
   const [tipos, setTipos] = useState([]);
   const [registros, setRegistros] = useState([]);

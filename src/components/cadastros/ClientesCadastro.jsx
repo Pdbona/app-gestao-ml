@@ -74,7 +74,8 @@ function capturarGeolocalizacao() {
 }
 
 export default function ClientesCadastro({ permissoes }) {
-  const perm = permissoes.cadastros?.clientes || {};
+  const temAcesso = Boolean(permissoes.acessos?.clientes);
+  const perm = { criar: temAcesso, editar: temAcesso, deletar: temAcesso };
 
   const [clientes, setClientes] = useState([]);
   const [carregando, setCarregando] = useState(true);

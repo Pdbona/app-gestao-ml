@@ -24,7 +24,8 @@ const TURNO_VAZIO = { nome: '', horaInicio: '', duracaoHoras: '', duracaoMinutos
 // (`somarMinutosAoHorario`) e salvando os dois (`duracaoMinutos` fica
 // gravado também, só pra pré-preencher a duração ao editar de novo).
 export default function TurnosCadastro({ permissoes, compacto = false }) {
-  const perm = permissoes.cadastros?.turnos || {};
+  const temAcesso = Boolean(permissoes.acessos?.turnos);
+  const perm = { criar: temAcesso, editar: temAcesso, deletar: temAcesso };
 
   const [turnos, setTurnos] = useState([]);
   const [carregando, setCarregando] = useState(true);

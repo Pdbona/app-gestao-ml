@@ -6,7 +6,7 @@ import { NAVY, ORANGE } from '../lib/styles';
 import { normalizarCpf, validarCpf, formatarCpf } from '../lib/cpf';
 import { capturarGeolocalizacao, distanciaMetros, TOLERANCIA_GEO_METROS } from '../lib/geo';
 import { obterConfigSelfie } from '../lib/limpezaSelfies';
-import { hojeISO, statusJanelaEntrada, statusJanelaSaida, minutosDesdeInicioTurno } from '../lib/data';
+import { hojeISO, statusJanelaEntrada, statusJanelaSaida, minutosDesdeInicioTurno, minutosAteFimTurno } from '../lib/data';
 
 // Tela PÚBLICA (sem login) — aberta direto pelo QR Code fixado no
 // Cliente/Local (ver botão "Gerar QR Code" em ClientesCadastro.jsx e a
@@ -126,7 +126,13 @@ export default function CheckinPublicScreen({ clienteId }) {
     setTurnoId(presencaAberta.turnoId);
     setTurnoDaSaida(turno);
 
-    const status = statusJanelaSaida(turno?.horaFim);
+    // Data em que ESTE turno começou (a `data` já gravada na presença
+    // aberta, sempre "hoje" no momento da chegada) — é a partir dela, não
+    // da data civil "agora", que o horaFim é resolvido, porque na hora de
+    // sair já pode ser depois da meia-noite (outro dia civil) num turno
+    // tipo Noturno 18:00–03:00 (ver comentário de minutosAteFimTurno em
+    // lib/data.js — bugfix real reportado pelo Pablo em 07/09/2026).
+    const status = statusJanelaSaida(presencaAberta.data, turno?.horaInicio, turno?.horaFim);
     if (status === 'normal' || status === 'sem_horario') {
       setTipoJustificativaSaida(null);
       setMinutosDesvioSaida(null);
@@ -134,7 +140,7 @@ export default function CheckinPublicScreen({ clienteId }) {
       return;
     }
     setTipoJustificativaSaida(status === 'antecipada' ? 'antecipada' : 'tempo_extra');
-    setMinutosDesvioSaida(minutosDesdeInicioTurno(turno.horaFim));
+    setMinutosDesvioSaida(minutosAteFimTurno(presencaAberta.data, turno.horaInicio, turno.horaFim));
     setJustificativaSaida('');
     setEtapa('justificativaSaida');
   };

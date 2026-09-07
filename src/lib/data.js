@@ -119,12 +119,44 @@ export function statusJanelaEntrada(horaInicio, agora = new Date()) {
 // junto do registro pra compor o relatório de presença (folha/cobrança).
 export const TOLERANCIA_SAIDA_MINUTOS = 10;
 
+// Minutos entre `agora` e o horaFim REAL do turno — diferente de
+// `minutosDesdeInicioTurno`, sabe resolver turno que cruza a meia-noite
+// (ex. Noturno 18:00–03:00): se `horaFim` (em minutos do dia) é MENOR ou
+// IGUAL a `horaInicio`, o fim cai no dia SEGUINTE ao dia em que o turno
+// começou — não no mesmo dia civil de `agora`. `dataInicioISO` é a data
+// (YYYY-MM-DD) em que ESSE turno específico começou (a `data` já gravada
+// na presença aberta, sempre "hoje" no momento da chegada) — é a partir
+// dela, não de `agora`, que o fim é calculado, porque na hora de sair já
+// pode ser depois da meia-noite (outro dia civil).
+//
+// Bug real (07/09/2026): antes disso, o cálculo comparava direto com
+// `agora` (como `minutosDesdeInicioTurno` faz) — pra um turno 16:00–01:50,
+// tentar sair antes da meia-noite calculava o "01:50" como se fosse HOJE
+// (já passado, várias horas atrás), soando como se a saída estivesse
+// muito atrasada, quando na verdade o turno ainda nem tinha terminado
+// (01:50 era amanhã).
+export function minutosAteFimTurno(dataInicioISO, horaInicio, horaFim, agora = new Date()) {
+  if (!horaFim) return null;
+  const [hf, mf] = horaFim.split(':').map(Number);
+  if (Number.isNaN(hf) || Number.isNaN(mf)) return null;
+
+  const [hi, mi] = (horaInicio || '').split(':').map(Number);
+  const temInicioValido = !Number.isNaN(hi) && !Number.isNaN(mi);
+  const cruzaMeiaNoite = temInicioValido && hf * 60 + mf <= hi * 60 + mi;
+
+  const [ano, mes, dia] = dataInicioISO.split('-').map(Number);
+  const fim = new Date(ano, mes - 1, dia, hf, mf, 0, 0);
+  if (cruzaMeiaNoite) fim.setDate(fim.getDate() + 1);
+
+  return Math.round((agora.getTime() - fim.getTime()) / 60000);
+}
+
 // 'sem_horario' (turno sem horaFim cadastrado, não exige justificativa) |
 // 'antecipada' (mais de 10min ANTES do fim — pode gerar desconto em folha)
 // | 'normal' (janela de ±10min) | 'atrasada' (mais de 10min DEPOIS do fim —
 // hora extra, precisa justificar pra cobrança ao cliente).
-export function statusJanelaSaida(horaFim, agora = new Date()) {
-  const minutos = minutosDesdeInicioTurno(horaFim, agora);
+export function statusJanelaSaida(dataInicioISO, horaInicio, horaFim, agora = new Date()) {
+  const minutos = minutosAteFimTurno(dataInicioISO, horaInicio, horaFim, agora);
   if (minutos == null) return 'sem_horario';
   if (minutos < -TOLERANCIA_SAIDA_MINUTOS) return 'antecipada';
   if (minutos <= TOLERANCIA_SAIDA_MINUTOS) return 'normal';

@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { db } from '../../firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { ui, NAVY } from '../../lib/styles';
+import { somarMinutosAoHorario, duracaoEntreHorarios } from '../../lib/data';
 
-const TURNO_VAZIO = { nome: '', horaInicio: '', horaFim: '', ativo: true };
+const TURNO_VAZIO = { nome: '', horaInicio: '', duracaoHoras: '', duracaoMinutos: '', ativo: true };
 
 // Turno é cadastro global reutilizável (igual Tipo de Operação/Operação):
 // entra como seleção no Planejamento Operacional e no check-in de
@@ -13,6 +14,15 @@ const TURNO_VAZIO = { nome: '', horaInicio: '', horaFim: '', ativo: true };
 // `compacto` renderiza um card menor (mesmo padrão de FluxosCadastro.jsx)
 // — usado lado a lado com Tipo de Operação/Operação em CadastrosScreen.jsx,
 // já que Turno entrou no grupo "Operação" a pedido do Pablo.
+//
+// Formulário pede Início + DURAÇÃO (não mais Início + Fim direto) —
+// sugestão do Pablo em 07/09/2026 depois de um turno Noturno acabar com o
+// horaFim errado (calculado de cabeça, sem perceber que cruzava a meia-
+// noite). `horaFim` continua sendo gravado e é o único campo que o resto
+// do app lê (Dashboard, Coletor, CheckinPublicScreen, lib/data.js) — só
+// esta tela muda, calculando `horaFim` a partir de horaInicio+duração
+// (`somarMinutosAoHorario`) e salvando os dois (`duracaoMinutos` fica
+// gravado também, só pra pré-preencher a duração ao editar de novo).
 export default function TurnosCadastro({ permissoes, compacto = false }) {
   const perm = permissoes.cadastros?.turnos || {};
 
@@ -45,10 +55,17 @@ export default function TurnosCadastro({ permissoes, compacto = false }) {
   };
 
   const abrirEdicao = (turno) => {
+    // Turno já cadastrado pelo fluxo novo tem `duracaoMinutos` gravado
+    // direto; um turno mais antigo (cadastrado antes dessa mudança) só
+    // tem `horaFim` — recalcula a duração a partir dele só pra
+    // pré-preencher o formulário (não altera nada no banco sozinho).
+    const totalMin =
+      turno.duracaoMinutos != null ? turno.duracaoMinutos : duracaoEntreHorarios(turno.horaInicio, turno.horaFim);
     setForm({
       nome: turno.nome || '',
       horaInicio: turno.horaInicio || '',
-      horaFim: turno.horaFim || '',
+      duracaoHoras: totalMin != null ? String(Math.floor(totalMin / 60)) : '',
+      duracaoMinutos: totalMin != null ? String(totalMin % 60) : '',
       ativo: turno.ativo !== false
     });
     setEditandoId(turno.id);
@@ -63,6 +80,16 @@ export default function TurnosCadastro({ permissoes, compacto = false }) {
     setErro('');
   };
 
+  const duracaoTotalMin = (Number(form.duracaoHoras) || 0) * 60 + (Number(form.duracaoMinutos) || 0);
+  const horaFimCalculado = form.horaInicio && duracaoTotalMin > 0 ? somarMinutosAoHorario(form.horaInicio, duracaoTotalMin) : '';
+  // Cruzou a meia-noite? horaInicio + duração passou de 1440min (24h) do
+  // início do dia — só pra mostrar o aviso "(dia seguinte)" no preview.
+  const cruzaMeiaNoite = (() => {
+    const [h, m] = (form.horaInicio || '').split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return false;
+    return h * 60 + m + duracaoTotalMin >= 1440;
+  })();
+
   const salvar = async () => {
     if (!form.nome.trim()) {
       setErro('Informe o nome do turno.');
@@ -72,13 +99,18 @@ export default function TurnosCadastro({ permissoes, compacto = false }) {
       setErro('Informe o horário de início do turno.');
       return;
     }
+    if (duracaoTotalMin <= 0) {
+      setErro('Informe a duração do turno (maior que zero).');
+      return;
+    }
     setSalvando(true);
     setErro('');
     try {
       const payload = {
         nome: form.nome,
         horaInicio: form.horaInicio,
-        horaFim: form.horaFim || null,
+        horaFim: horaFimCalculado,
+        duracaoMinutos: duracaoTotalMin,
         ativo: form.ativo
       };
       if (editandoId) {
@@ -140,13 +172,29 @@ export default function TurnosCadastro({ permissoes, compacto = false }) {
               />
             </label>
             <label style={ui.label}>
-              Fim do turno
-              <input
-                type="time"
-                style={ui.input}
-                value={form.horaFim}
-                onChange={(e) => setForm({ ...form, horaFim: e.target.value })}
-              />
+              Duração do turno *
+              <div style={styles.duracaoLinha}>
+                <input
+                  type="number"
+                  min="0"
+                  max="23"
+                  style={{ ...ui.input, width: 70 }}
+                  value={form.duracaoHoras}
+                  onChange={(e) => setForm({ ...form, duracaoHoras: e.target.value })}
+                  placeholder="0"
+                />
+                <span style={styles.duracaoUnidade}>h</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  style={{ ...ui.input, width: 70 }}
+                  value={form.duracaoMinutos}
+                  onChange={(e) => setForm({ ...form, duracaoMinutos: e.target.value })}
+                  placeholder="0"
+                />
+                <span style={styles.duracaoUnidade}>min</span>
+              </div>
             </label>
             <label style={ui.label}>
               Status
@@ -161,9 +209,18 @@ export default function TurnosCadastro({ permissoes, compacto = false }) {
             </label>
           </div>
 
+          {horaFimCalculado && (
+            <p style={styles.previewFim}>
+              🕐 Fim do turno: <strong>{horaFimCalculado}</strong>
+              {cruzaMeiaNoite ? ' (dia seguinte)' : ''}
+            </p>
+          )}
+
           <p style={ui.placeholderNote}>
             O início do turno baliza o alerta de falta no Dashboard: se faltar 15min depois
-            deste horário e ainda faltar gente confirmar presença, o alerta dispara.
+            deste horário e ainda faltar gente confirmar presença, o alerta dispara. O fim é
+            calculado sozinho a partir da duração — não precisa fazer a conta de cabeça (é aí
+            que costuma errar em turnos que passam da meia-noite).
           </p>
 
           <div style={{ display: 'flex', gap: 10 }}>
@@ -274,5 +331,17 @@ const styles = {
     borderBottom: '1px solid #EEE',
     fontSize: 13
   },
-  fotosCompacto: { fontSize: 11, color: '#777', marginTop: 4 }
+  fotosCompacto: { fontSize: 11, color: '#777', marginTop: 4 },
+
+  duracaoLinha: { display: 'flex', alignItems: 'center', gap: 6 },
+  duracaoUnidade: { fontSize: 13, color: '#666', fontWeight: 600 },
+  previewFim: {
+    fontSize: 14,
+    color: NAVY,
+    background: '#F0F3F7',
+    borderRadius: 6,
+    padding: '8px 12px',
+    margin: '0 0 4px',
+    display: 'inline-block'
+  }
 };

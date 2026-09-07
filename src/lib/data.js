@@ -163,6 +163,41 @@ export function statusJanelaSaida(dataInicioISO, horaInicio, horaFim, agora = ne
   return 'atrasada';
 }
 
+// Soma uma duração (em minutos) a um horário "HH:mm", devolvendo o
+// horário resultante — sempre "quebra" corretamente pra depois da meia-
+// noite (aritmética mod 24h, sem precisar de nenhuma detecção de
+// cruzamento à parte). Usada em TurnosCadastro.jsx (07/09/2026, sugestão
+// do Pablo): cadastro pede Início + Duração, em vez do Administrativo
+// calcular o horaFim de cabeça (foi digitando esse cálculo à mão que um
+// turno Noturno acabou com o horaFim errado — ver bugfix de
+// `minutosAteFimTurno` acima, no mesmo dia).
+export function somarMinutosAoHorario(horaInicio, duracaoMinutos) {
+  const [h, m] = (horaInicio || '').split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m) || !Number.isFinite(duracaoMinutos)) return '';
+  const totalMinutos = (((h * 60 + m + duracaoMinutos) % 1440) + 1440) % 1440;
+  const hf = Math.floor(totalMinutos / 60);
+  const mf = totalMinutos % 60;
+  return `${String(hf).padStart(2, '0')}:${String(mf).padStart(2, '0')}`;
+}
+
+// Inverso de `somarMinutosAoHorario` — duração em minutos entre horaInicio
+// e horaFim, assumindo que o turno nunca passa de 24h (se horaFim ficar
+// numericamente ≤ horaInicio, soma 24h — mesma convenção de "cruza a
+// meia-noite" de `minutosAteFimTurno`). Só serve pra RECALCULAR a duração
+// de turnos antigos que já tinham `horaFim` gravado direto (cadastrados
+// antes da duração virar o campo de entrada) — usada só pra pré-preencher
+// o formulário de edição quando o turno ainda não tem `duracaoMinutos`
+// salvo.
+export function duracaoEntreHorarios(horaInicio, horaFim) {
+  const [hi, mi] = (horaInicio || '').split(':').map(Number);
+  const [hf, mf] = (horaFim || '').split(':').map(Number);
+  if ([hi, mi, hf, mf].some((n) => Number.isNaN(n))) return null;
+  const inicioMin = hi * 60 + mi;
+  let fimMin = hf * 60 + mf;
+  if (fimMin <= inicioMin) fimMin += 1440;
+  return fimMin - inicioMin;
+}
+
 // { inicio, fim } (ISO) da quinzena corrente a partir de diaISO: dia 1-15 do
 // mês, ou dia 16-até o último dia do mês. Usada como período padrão do
 // relatório de presença (ciclo de cobrança quinzenal da ML).

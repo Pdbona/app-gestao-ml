@@ -39,6 +39,15 @@ export const CATALOGO_ACESSOS = [
   { id: 'relatorios', label: 'Relatórios', icone: '📈', area: 'aba' },
   { id: 'autorizacoes', label: 'Autorizações', icone: '🔔', area: 'aba' },
   { id: 'coletor', label: 'Coletor', icone: '📱', area: 'aba' },
+  // Não é uma tela própria (por isso `area: 'capacidade'`, nem 'aba' nem
+  // 'cadastro' — não aparece na sidebar nem em Cadastros) — é um modificador
+  // do comportamento da tela Coletor pra quem já tem acesso a ela. Pedido do
+  // Pablo (08/09/2026, pro Líder/Diretor): quem tiver esse acesso enxerga
+  // TODAS as operações em andamento no Coletor (não só a própria), pode
+  // iniciar mais de uma operação ao mesmo tempo (sem a trava de "1 ativa por
+  // usuário") e pode finalizar qualquer uma, mesmo iniciada por outro
+  // usuário. Ver `souSupervisor` em ColetorScreen.jsx.
+  { id: 'coletorSupervisao', label: 'Supervisão do Coletor (todas as operações)', icone: '🦺', area: 'capacidade' },
   { id: 'clientes', label: 'Cliente', icone: '🏢', area: 'cadastro' },
   { id: 'perfis', label: 'Perfil', icone: '🛡️', area: 'cadastro' },
   { id: 'usuarios', label: 'Usuários', icone: '👤', area: 'cadastro' },

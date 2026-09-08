@@ -413,7 +413,9 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
             <CadastrosScreen permissoes={permissoes} secaoAtualId={secaoAtual?.id} />
           )}
           {abaAtual === 'coletor' && temColetor && (
-            <ColetorScreen usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />
+            <ColetorScreen
+              usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome, permissoes: usuarioAtivo.permissoes }}
+            />
           )}
           {abaAtual === 'planejamento' && temPlanejamento && secaoPlanejamentoAtualResolvida?.id === 'planejamentoAjuste' && (
             <AjusteRegistrosScreen usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />

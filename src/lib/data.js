@@ -76,6 +76,35 @@ export function formatarHorario(valor) {
   return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+// Data + hora curta (ex: "07/09 23:44") — diferente de `formatarHorario`
+// (só hora), usada onde o dia pode não ser hoje (ex: operação em aberto de
+// um dia anterior — ver `coletorSupervisao` em lib/permissoes.js).
+export function formatarDataHoraCurta(valor) {
+  const ms = paraMillis(valor);
+  if (!ms) return '--/-- --:--';
+  return new Date(ms).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+// "Há quanto tempo" desde um timestamp até `agora` (ms) — em min/h/dia,
+// sempre arredondando pra baixo. Usada pra destacar operação parada há
+// muito tempo (Coletor em modo supervisão, Dashboard "Operações em
+// aberto").
+export function tempoDecorridoTexto(valor, agora) {
+  const ms = paraMillis(valor);
+  if (!ms) return '--';
+  const minutos = Math.max(0, Math.floor((agora - ms) / 60000));
+  if (minutos < 60) return `${minutos}min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `${horas}h${String(minutos % 60).padStart(2, '0')}min`;
+  const dias = Math.floor(horas / 24);
+  return `${dias}d ${horas % 24}h`;
+}
+
 // Minutos decorridos desde um horário ("HH:mm") até `agora` — usada tanto
 // pro horaInicio do turno (janela de chegada) quanto pro horaFim (janela de
 // saída, ver abaixo), mesma técnica de parse já usada em DashboardTab.jsx

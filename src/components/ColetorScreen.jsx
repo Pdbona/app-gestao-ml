@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { NAVY, ORANGE } from '../lib/styles';
 import { redimensionarImagemParaBase64 } from '../lib/imagem';
-import { hojeISO, ehMesmoDia } from '../lib/data';
+import { hojeISO, ehMesmoDia, paraMillis, formatarDataHoraCurta, tempoDecorridoTexto } from '../lib/data';
 
 // Tipo de volume manuseado (07/09/2026, pedido do Pablo) — lista fixa, sem
 // virar cadastro à parte por enquanto.
@@ -114,6 +114,17 @@ export default function ColetorScreen({ usuario }) {
   const [erro, setErro] = useState('');
   const [agora, setAgora] = useState(Date.now());
 
+  // Supervisão do Coletor (08/09/2026, pedido do Pablo pro perfil de
+  // Líder/Diretor) — ver `coletorSupervisao` em lib/permissoes.js. Quem tem
+  // esse acesso enxerga TODAS as operações em andamento (não só a própria),
+  // pode iniciar mais de uma ao mesmo tempo e finalizar qualquer uma.
+  // `telaSupervisor` só é relevante quando `souSupervisor` é true: decide
+  // se mostra a lista de operações, o formulário de nova operação, ou a
+  // tela de finalizar uma operação escolhida da lista.
+  const souSupervisor = Boolean(usuario.permissoes?.acessos?.coletorSupervisao);
+  const [telaSupervisor, setTelaSupervisor] = useState('lista'); // 'lista' | 'nova' | 'finalizar'
+  const [idFinalizando, setIdFinalizando] = useState(null);
+
   useEffect(() => {
     const unsubFluxos = onSnapshot(collection(db, 'fluxos'), (snap) => {
       setFluxos(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((f) => f.ativo !== false));
@@ -151,17 +162,45 @@ export default function ColetorScreen({ usuario }) {
     return () => clearInterval(t);
   }, []);
 
-  // Operação em andamento — só a do PRÓPRIO usuário logado. Como só ele
-  // enxerga a dele aqui, na prática só ele consegue finalizá-la: o
-  // requisito "só quem iniciou pode finalizar" já sai garantido disso.
-  const operacaoAtiva = useMemo(
+  // Operação em andamento do PRÓPRIO usuário logado — no fluxo normal (sem
+  // supervisão), é o que decide "só quem iniciou pode finalizar": só ele
+  // enxerga a dele aqui.
+  const operacaoAtivaPropria = useMemo(
     () => registros.find((r) => r.usuarioId === usuario.uid && !r.fim),
     [registros, usuario.uid]
   );
 
-  const fluxoDaAtiva = fluxos.find((f) => f.id === operacaoAtiva?.fluxoId);
-  const tipoDaAtiva = tipos.find((t) => t.id === operacaoAtiva?.tipoOperacaoId);
-  const clienteDaAtiva = clientes.find((c) => c.id === operacaoAtiva?.clienteId);
+  // Todas as operações em andamento, de qualquer usuário e de qualquer dia
+  // (mais antiga primeiro, pra destacar a mais parada) — só usada em modo
+  // supervisão, pra montar a lista da tela inicial.
+  const operacoesEmAndamento = useMemo(
+    () => registros.filter((r) => !r.fim).sort((a, b) => (paraMillis(a.inicio) || 0) - (paraMillis(b.inicio) || 0)),
+    [registros]
+  );
+
+  // Qual operação mostrar na tela de "finalizar": no fluxo normal, é sempre
+  // a própria ativa (comportamento de antes). Em modo supervisão, só quando
+  // o usuário escolheu uma na lista (`telaSupervisor === 'finalizar'`) —
+  // pode ser qualquer operação, de qualquer usuário.
+  const operacaoParaFinalizar = souSupervisor
+    ? telaSupervisor === 'finalizar'
+      ? operacoesEmAndamento.find((r) => r.id === idFinalizando) || null
+      : null
+    : operacaoAtivaPropria;
+
+  // Quando mostrar o formulário de "nova operação": no fluxo normal, sempre
+  // que não houver operação própria em andamento (comportamento de antes).
+  // Em modo supervisão, só quando o usuário clicou em "+ Nova operação".
+  const mostrarFormNovaOperacao = souSupervisor ? telaSupervisor === 'nova' : !operacaoAtivaPropria;
+
+  const voltarParaLista = () => {
+    setTelaSupervisor('lista');
+    setIdFinalizando(null);
+  };
+
+  const fluxoDaAtiva = fluxos.find((f) => f.id === operacaoParaFinalizar?.fluxoId);
+  const tipoDaAtiva = tipos.find((t) => t.id === operacaoParaFinalizar?.tipoOperacaoId);
+  const clienteDaAtiva = clientes.find((c) => c.id === operacaoParaFinalizar?.clienteId);
   const fluxoSelecionado = fluxos.find((f) => f.id === fluxoId);
 
   // Teto de MdO pra hoje neste cliente: soma o que o Administrativo
@@ -180,8 +219,10 @@ export default function ColetorScreen({ usuario }) {
   // deixava sobrar MdO "fantasma" quando vários turnos passavam pelo mesmo
   // cliente no mesmo dia (ex: Diurno já foi embora, mas ainda contava como
   // disponível à noite). Depois desconta quem já está alocado em outras
-  // operações em andamento (de outros usuários — a própria, se existisse,
-  // nem chegaria nesta tela, ver `operacaoAtiva` acima). Exemplo do Pablo:
+  // operações em andamento (de outros usuários — no fluxo normal, sem
+  // supervisão, a própria nem chegaria nesta tela, ver `operacaoAtivaPropria`
+  // acima; em modo supervisão o próprio usuário pode ter uma ativa e ainda
+  // assim estar aqui iniciando outra). Exemplo do Pablo:
   // 4 presentes, 2 já numa operação em andamento → só sobram 2 pra
   // próxima; vai liberando conforme as operações anteriores finalizam.
   const presencaConfirmadaHoje = presencas.filter(
@@ -205,13 +246,9 @@ export default function ColetorScreen({ usuario }) {
 
   useEffect(() => {
     setFotosFim(Array(fluxoDaAtiva?.fotosFim || 0).fill(null));
-  }, [operacaoAtiva?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [operacaoParaFinalizar?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const iniciarInicioMs = operacaoAtiva?.inicio?.toMillis
-    ? operacaoAtiva.inicio.toMillis()
-    : operacaoAtiva?.inicio
-    ? new Date(operacaoAtiva.inicio).getTime()
-    : null;
+  const iniciarInicioMs = paraMillis(operacaoParaFinalizar?.inicio);
   const decorridoSegundos = iniciarInicioMs ? Math.max(0, Math.floor((agora - iniciarInicioMs) / 1000)) : 0;
   const decorridoTexto = `${String(Math.floor(decorridoSegundos / 60)).padStart(2, '0')}:${String(
     decorridoSegundos % 60
@@ -296,6 +333,10 @@ export default function ColetorScreen({ usuario }) {
       setTipoVolume('');
       setQtdMdo('');
       setFotosInicio([]);
+      // Em modo supervisão, volta pra lista em vez de ficar preso no
+      // formulário — quem tem esse acesso pode querer iniciar mais uma ou
+      // ir finalizar outra na sequência.
+      if (souSupervisor) voltarParaLista();
     } catch (e) {
       setErro('Falha ao iniciar. Verifique a conexão com o Firebase e tente novamente.');
     } finally {
@@ -304,26 +345,32 @@ export default function ColetorScreen({ usuario }) {
   };
 
   const finalizar = async () => {
-    if (!fotosFimOk) return;
+    if (!fotosFimOk || !operacaoParaFinalizar) return;
     setErro('');
     setSalvando(true);
     try {
       const tempoRealMinutos = iniciarInicioMs ? Math.max(1, Math.round((Date.now() - iniciarInicioMs) / 60000)) : null;
-      await updateDoc(doc(db, 'registrosOperacao', operacaoAtiva.id), {
+      await updateDoc(doc(db, 'registrosOperacao', operacaoParaFinalizar.id), {
         fim: serverTimestamp(),
         fotosFimQtd: fotosFim.filter(Boolean).length,
         observacao: observacao.trim() || null,
-        tempoRealMinutos
+        tempoRealMinutos,
+        // Quem finalizou nem sempre é quem iniciou (modo supervisão) —
+        // guarda os dois pra auditoria, sem sobrescrever usuarioId/usuarioNome
+        // (que continuam sendo de quem INICIOU a operação).
+        finalizadoPorId: usuario.uid,
+        finalizadoPorNome: usuario.nome
       });
-      await salvarFotos(operacaoAtiva.id, fotosFim, 'fim');
+      await salvarFotos(operacaoParaFinalizar.id, fotosFim, 'fim');
       // Mesmo ajuste de cima: corrige localmente na hora, sem esperar o
       // listener — é o que resolve a tela ficar "presa" depois de
       // finalizar (bug relatado pelo Pablo em 03/09/2026).
       setRegistros((atual) =>
-        atual.map((r) => (r.id === operacaoAtiva.id ? { ...r, fim: new Date(), tempoRealMinutos } : r))
+        atual.map((r) => (r.id === operacaoParaFinalizar.id ? { ...r, fim: new Date(), tempoRealMinutos } : r))
       );
       setFotosFim([]);
       setObservacao('');
+      if (souSupervisor) voltarParaLista();
     } catch (e) {
       setErro('Falha ao finalizar. Verifique a conexão com o Firebase e tente novamente.');
     } finally {
@@ -352,11 +399,17 @@ export default function ColetorScreen({ usuario }) {
     );
   }
 
-  // ---- Operação em andamento: tela de finalizar ----
-  if (operacaoAtiva) {
+  // ---- Operação em andamento (própria, ou escolhida da lista em modo
+  // supervisão): tela de finalizar ----
+  if (operacaoParaFinalizar) {
     return (
       <div style={styles.pagina}>
         <div style={styles.card}>
+          {souSupervisor && (
+            <button type="button" style={styles.botaoVoltar} onClick={voltarParaLista}>
+              ← Voltar pra lista
+            </button>
+          )}
           <div style={styles.cronometro}>{decorridoTexto}</div>
           <p style={styles.infoAtiva}>
             <strong>{clienteDaAtiva?.nome || '...'}</strong>
@@ -364,10 +417,20 @@ export default function ColetorScreen({ usuario }) {
             {fluxoDaAtiva?.nome || '...'} — {tipoDaAtiva?.nome || '...'}
           </p>
           <div style={styles.tagsAtiva}>
-            {operacaoAtiva.documentoProcesso && <span style={styles.tag}>{operacaoAtiva.documentoProcesso}</span>}
-            {operacaoAtiva.qtdVolumes != null && <span style={styles.tag}>{operacaoAtiva.qtdVolumes} volume(s)</span>}
-            {operacaoAtiva.qtdMdo != null && <span style={styles.tag}>{operacaoAtiva.qtdMdo} MdO</span>}
+            {operacaoParaFinalizar.documentoProcesso && (
+              <span style={styles.tag}>{operacaoParaFinalizar.documentoProcesso}</span>
+            )}
+            {operacaoParaFinalizar.qtdVolumes != null && (
+              <span style={styles.tag}>{operacaoParaFinalizar.qtdVolumes} volume(s)</span>
+            )}
+            {operacaoParaFinalizar.qtdMdo != null && <span style={styles.tag}>{operacaoParaFinalizar.qtdMdo} MdO</span>}
           </div>
+          {souSupervisor && operacaoParaFinalizar.usuarioId !== usuario.uid && (
+            <p style={styles.avisoIniciadaPorOutro}>
+              Iniciada por {operacaoParaFinalizar.usuarioNome || 'outro usuário'} em{' '}
+              {formatarDataHoraCurta(operacaoParaFinalizar.inicio)}
+            </p>
+          )}
           <p style={styles.emAndamento}>🟢 Operação em andamento</p>
 
           <button type="button" style={styles.botaoPausar} onClick={pausar}>
@@ -408,10 +471,18 @@ export default function ColetorScreen({ usuario }) {
     );
   }
 
-  // ---- Nenhuma operação em andamento: tela de iniciar ----
-  return (
+  // ---- Formulário de nova operação (fluxo normal: quando não há operação
+  // própria em andamento; modo supervisão: só quando escolheu "+ Nova
+  // operação" na lista) ----
+  if (mostrarFormNovaOperacao) {
+    return (
     <div style={styles.pagina}>
       <div style={styles.card}>
+        {souSupervisor && (
+          <button type="button" style={styles.botaoVoltar} onClick={voltarParaLista}>
+            ← Voltar pra lista
+          </button>
+        )}
         <h2 style={styles.tituloCard}>Nova operação</h2>
 
         <label style={styles.rotulo}>
@@ -551,6 +622,72 @@ export default function ColetorScreen({ usuario }) {
         {!podeIniciar && <p style={styles.dicaBotao}>Preencha todos os campos e fotos obrigatórias pra liberar.</p>}
       </div>
     </div>
+    );
+  }
+
+  // ---- Modo supervisão, tela inicial: lista de TODAS as operações em
+  // andamento (qualquer usuário, qualquer dia) + botão pra iniciar mais
+  // uma. Só chega aqui quando `souSupervisor` é true (nos outros casos,
+  // um dos `if` acima já retornou antes). ----
+  return (
+    <div style={styles.pagina}>
+      <div style={{ ...styles.card, maxWidth: 560 }}>
+        <h2 style={styles.tituloCard}>Coletor — Supervisão</h2>
+
+        <button
+          type="button"
+          style={{ ...styles.botaoGrande, ...styles.botaoIniciar, marginBottom: 22 }}
+          onClick={() => setTelaSupervisor('nova')}
+        >
+          ▶ Nova operação
+        </button>
+
+        {operacoesEmAndamento.length === 0 ? (
+          <p style={styles.avisoVazio}>Nenhuma operação em andamento no momento. 🎉</p>
+        ) : (
+          <>
+            <div style={styles.rotuloLista}>
+              {operacoesEmAndamento.length} operação(ões) em andamento
+            </div>
+            <div style={styles.listaOperacoes}>
+              {operacoesEmAndamento.map((op) => {
+                const c = clientes.find((x) => x.id === op.clienteId);
+                const f = fluxos.find((x) => x.id === op.fluxoId);
+                const t = tipos.find((x) => x.id === op.tipoOperacaoId);
+                const parada = agora - (paraMillis(op.inicio) || agora) > 24 * 60 * 60 * 1000;
+                return (
+                  <div key={op.id} style={{ ...styles.itemLista, ...(parada ? styles.itemListaParada : {}) }}>
+                    <div style={styles.itemListaTexto}>
+                      <div style={styles.itemListaCliente}>{c?.nome || '(cliente removido)'}</div>
+                      <div style={styles.itemListaDetalhe}>
+                        {t?.nome || '...'} — {f?.nome || '...'} · Doc {op.documentoProcesso}
+                      </div>
+                      <div style={styles.itemListaDetalhe}>
+                        {op.qtdVolumes} volume(s) · {op.qtdMdo} MdO · iniciada por {op.usuarioNome || '...'}
+                      </div>
+                      <div style={{ ...styles.itemListaHora, ...(parada ? styles.itemListaHoraParada : {}) }}>
+                        {formatarDataHoraCurta(op.inicio)} · há {tempoDecorridoTexto(op.inicio, agora)}
+                        {parada ? ' ⚠️' : ''}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      style={styles.botaoFinalizarItem}
+                      onClick={() => {
+                        setIdFinalizando(op.id);
+                        setTelaSupervisor('finalizar');
+                      }}
+                    >
+                      Finalizar
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -558,6 +695,56 @@ const styles = {
   pagina: { display: 'flex', justifyContent: 'center', padding: '4px 0' },
   tituloPagina: { color: NAVY, textAlign: 'center' },
   avisoVazio: { color: '#777', fontSize: 14, textAlign: 'center', maxWidth: 420 },
+
+  // ---- Modo supervisão (coletorSupervisao, 08/09/2026) ----
+  botaoVoltar: {
+    background: 'none',
+    border: 'none',
+    color: NAVY,
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: 'pointer',
+    padding: 0,
+    marginBottom: 16
+  },
+  avisoIniciadaPorOutro: {
+    background: '#EEF2F7',
+    color: NAVY,
+    fontSize: 12,
+    fontWeight: 600,
+    textAlign: 'center',
+    padding: '6px 10px',
+    borderRadius: 6,
+    marginBottom: 8
+  },
+  rotuloLista: { fontSize: 13, fontWeight: 700, color: '#666', marginBottom: 10 },
+  listaOperacoes: { display: 'flex', flexDirection: 'column', gap: 10 },
+  itemLista: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    border: '1px solid #E5E5E5',
+    borderRadius: 10,
+    padding: '12px 14px'
+  },
+  itemListaParada: { border: '1px solid #F0B0A8', background: '#FFF6F5' },
+  itemListaTexto: { minWidth: 0 },
+  itemListaCliente: { fontWeight: 700, color: NAVY, fontSize: 15 },
+  itemListaDetalhe: { fontSize: 12, color: '#555', marginTop: 2 },
+  itemListaHora: { fontSize: 11, color: '#999', marginTop: 4 },
+  itemListaHoraParada: { color: '#C0392B', fontWeight: 700 },
+  botaoFinalizarItem: {
+    flexShrink: 0,
+    background: NAVY,
+    color: '#FFF',
+    border: 'none',
+    borderRadius: 8,
+    padding: '10px 14px',
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: 'pointer'
+  },
 
   card: {
     background: '#FFF',

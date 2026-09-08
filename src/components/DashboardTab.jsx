@@ -6,7 +6,16 @@ import { limparSelfiesVencidas } from '../lib/limpezaSelfies';
 import { limparFotosOperacaoVencidas } from '../lib/limpezaFotosOperacao';
 import { gerarRomaneioPdf } from '../lib/romaneio';
 import { obterLogoMlBase64 } from '../lib/logoAssets';
-import { hojeISO, addDiasISO, labelDataCurta, paraMillis, ehMesmoDia, formatarHorario } from '../lib/data';
+import {
+  hojeISO,
+  addDiasISO,
+  labelDataCurta,
+  paraMillis,
+  ehMesmoDia,
+  formatarHorario,
+  formatarDataHoraCurta,
+  tempoDecorridoTexto
+} from '../lib/data';
 import DashboardMLSection from './dashboard-ml/DashboardMLSection';
 
 const LOGO_ML_URL = `${process.env.PUBLIC_URL}/logos/logo-ml.png`;
@@ -164,6 +173,18 @@ export default function DashboardTab() {
         )
       );
   }, [registros, hoje]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ======== Seção nova: Operações em aberto, TODOS os dias (08/09/2026,
+  // pedido do Pablo pro Líder identificar operação esquecida em aberto de
+  // dias anteriores e ir fechar pelo Coletor — ver `coletorSupervisao` em
+  // lib/permissoes.js / ColetorScreen.jsx). Diferente da Seção 1 (só hoje):
+  // aqui é TUDO que ainda não foi finalizado, não importa o dia — ordenado
+  // da mais antiga pra mais nova, pra chamar atenção pra mais parada
+  // primeiro.
+  const operacoesEmAberto = useMemo(
+    () => registros.filter((r) => !r.fim).sort((a, b) => (paraMillis(a.inicio) || 0) - (paraMillis(b.inicio) || 0)),
+    [registros]
+  );
 
   // Clicar em "Ver romaneio" só busca as fotos e abre a prévia em tela —
   // o PDF de verdade só é gerado se o usuário clicar em "Baixar PDF" lá
@@ -389,6 +410,43 @@ export default function DashboardTab() {
             );
           })}
         </div>
+      )}
+
+      {/* ===== 1.5) Operações em aberto, todos os dias (não só hoje) —
+          pra o Líder achar e fechar pelo Coletor, ver coletorSupervisao ===== */}
+      {operacoesEmAberto.length > 0 && (
+        <>
+          <h3 style={{ ...ui.sectionTitle, fontSize: 16, marginTop: 28 }}>Operações em aberto</h3>
+          <p style={{ ...ui.placeholderNote, marginTop: -4, marginBottom: 10 }}>
+            Todas as operações ainda não finalizadas, de qualquer dia — feche pela tela do Coletor
+            (precisa de acesso de supervisão).
+          </p>
+          <div style={styles.listaAberto}>
+            {operacoesEmAberto.map((op) => {
+              const parada = agora - (paraMillis(op.inicio) || agora) > 24 * 60 * 60 * 1000;
+              return (
+                <div key={op.id} style={{ ...styles.itemAberto, ...(parada ? styles.itemAbertoParado : {}) }}>
+                  <div>
+                    <strong style={{ color: NAVY }}>
+                      {op.clienteId ? nomeCliente(op.clienteId) : '(sem cliente informado)'}
+                    </strong>{' '}
+                    — {nomeTipo(op.tipoOperacaoId)} · {nomeFluxo(op.fluxoId)}
+                    <div style={styles.itemAbertoDetalhe}>
+                      Doc {op.documentoProcesso} · {op.qtdVolumes} volume(s) · {op.qtdMdo} MdO · iniciada por{' '}
+                      {op.usuarioNome || '...'}
+                    </div>
+                  </div>
+                  <div style={{ ...styles.itemAbertoHora, ...(parada ? styles.itemAbertoHoraParada : {}) }}>
+                    {formatarDataHoraCurta(op.inicio)}
+                    <br />
+                    há {tempoDecorridoTexto(op.inicio, agora)}
+                    {parada ? ' ⚠️' : ''}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* ===== 2) Planejamento e confirmação de presença por cliente, hoje ===== */}
@@ -685,6 +743,24 @@ const styles = {
   operacaoRow: { padding: '8px 6px', borderBottom: '1px solid #F5F5F5' },
   operacaoTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 },
   operacaoDetalhe: { fontSize: 12, color: '#666' },
+
+  // ---- "Operações em aberto" (todos os dias, 08/09/2026) ----
+  listaAberto: { display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 720 },
+  itemAberto: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    background: '#FFF',
+    border: '1px solid #E5E5E5',
+    borderRadius: 8,
+    padding: '10px 14px',
+    fontSize: 13
+  },
+  itemAbertoParado: { border: '1px solid #F0B0A8', background: '#FFF6F5' },
+  itemAbertoDetalhe: { fontSize: 12, color: '#666', marginTop: 2 },
+  itemAbertoHora: { fontSize: 11, color: '#999', textAlign: 'right', flexShrink: 0, lineHeight: 1.5 },
+  itemAbertoHoraParada: { color: '#C0392B', fontWeight: 700 },
 
   turnoRow: {
     display: 'flex',

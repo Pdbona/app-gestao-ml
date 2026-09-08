@@ -226,6 +226,17 @@ export default function DashboardTab() {
       .forEach((p) => {
         const turno = turnos.find((t) => t.id === p.turnoId);
         const presentesGrupo = presencasHoje.filter((pr) => pr.clienteId === p.clienteId && pr.turnoId === p.turnoId);
+        // Bugfix 08/09/2026 (relatado pelo Pablo com dado real da Superior
+        // Transportes): "presente" contava TODO mundo que confirmou presença
+        // no turno, mesmo quem já tinha registrado saída — o card ficava
+        // "3/3 Completo" pra sempre, mesmo depois de alguém sair. Mesma
+        // correção já aplicada no Coletor (disponibilidade de MdO,
+        // 07/09/2026): só conta quem ainda está com presença aberta
+        // (`!pr.dataHoraSaida`) pro contador/status do card — a lista
+        // expandida (`presentesGrupo`) continua mostrando todo mundo que
+        // confirmou hoje, incluindo quem já saiu, pra não perder o
+        // histórico do dia.
+        const presentesAgora = presentesGrupo.filter((pr) => !pr.dataHoraSaida).length;
         const item = {
           planejamentoId: p.id,
           turnoId: p.turnoId,
@@ -233,7 +244,7 @@ export default function DashboardTab() {
           horaInicio: turno?.horaInicio,
           horaFim: turno?.horaFim,
           planejado: p.qtdMdo,
-          presente: presentesGrupo.length,
+          presente: presentesAgora,
           presentesGrupo,
           atrasado: limiteAtrasoAtingido(turno?.horaInicio, agora),
           faltaAceita: Boolean(p.faltaAceita),
@@ -441,6 +452,9 @@ export default function DashboardTab() {
                               {item.presentesGrupo.map((p) => (
                                 <li key={p.id}>
                                   {p.colaboradorNome} — {formatarHorario(p.dataHoraCheckin)}
+                                  {p.dataHoraSaida && (
+                                    <span style={{ color: '#999' }}> · saiu {formatarHorario(p.dataHoraSaida)}</span>
+                                  )}
                                 </li>
                               ))}
                             </ul>

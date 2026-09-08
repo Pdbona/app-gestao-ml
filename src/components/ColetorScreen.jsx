@@ -172,14 +172,21 @@ export default function ColetorScreen({ usuario }) {
 
   // Disponibilidade REAL de gente agora (07/09/2026, pedido do Pablo): não
   // basta caber no planejado — precisa sobrar gente de verdade. Conta
-  // quem confirmou presença hoje nesse cliente (todos os turnos, já que
-  // registrosOperacao não distingue turno) e desconta quem já está
-  // alocado em outras operações em andamento (de outros usuários — a
-  // própria, se existisse, nem chegaria nesta tela, ver `operacaoAtiva`
-  // acima). Exemplo do Pablo: 4 presentes, 2 já numa operação em
-  // andamento → só sobram 2 pra próxima; vai liberando conforme as
-  // operações anteriores finalizam.
-  const presencaConfirmadaHoje = presencas.filter((p) => p.clienteId === clienteId && p.data === hojeISO()).length;
+  // quem confirmou presença hoje nesse cliente E AINDA NÃO REGISTROU SAÍDA
+  // (`!p.dataHoraSaida` — ver fluxo de saída em CheckinPublicScreen.jsx),
+  // já que alguém que já foi embora não está mais disponível pra alocar em
+  // operação nenhuma. Bugfix 07/09/2026: antes contava TODO mundo que
+  // confirmou presença em algum turno do dia, mesmo já tendo saído — isso
+  // deixava sobrar MdO "fantasma" quando vários turnos passavam pelo mesmo
+  // cliente no mesmo dia (ex: Diurno já foi embora, mas ainda contava como
+  // disponível à noite). Depois desconta quem já está alocado em outras
+  // operações em andamento (de outros usuários — a própria, se existisse,
+  // nem chegaria nesta tela, ver `operacaoAtiva` acima). Exemplo do Pablo:
+  // 4 presentes, 2 já numa operação em andamento → só sobram 2 pra
+  // próxima; vai liberando conforme as operações anteriores finalizam.
+  const presencaConfirmadaHoje = presencas.filter(
+    (p) => p.clienteId === clienteId && p.data === hojeISO() && !p.dataHoraSaida
+  ).length;
   const mdoJaAlocadoAgora = registros
     .filter((r) => r.clienteId === clienteId && !r.fim && ehMesmoDia(r.inicio, hojeISO()))
     .reduce((soma, r) => soma + (Number(r.qtdMdo) || 0), 0);
@@ -511,14 +518,14 @@ export default function ColetorScreen({ usuario }) {
         )}
         {clienteId && mdoPlanejadoHoje > 0 && mdoDisponivelAgora === 0 && (
           <p style={styles.avisoPlanejamento}>
-            ⚠️ Não há colaborador disponível agora — todos já estão em outra(s) operação(ões) em
-            andamento neste cliente. Assim que alguma finalizar, os colaboradores dela ficam livres
-            pra próxima.
+            ⚠️ Não há colaborador disponível agora neste cliente — ou ninguém com presença aberta no
+            local, ou todos já estão em outra(s) operação(ões) em andamento. Assim que alguém
+            confirmar presença ou alguma operação finalizar, a MdO fica livre pra próxima.
           </p>
         )}
         {clienteId && mdoDisponivelAgora > 0 && Number(qtdMdo) > mdoTetoEfetivo && (
           <p style={styles.avisoPlanejamento}>
-            ⚠️ Só há {mdoTetoEfetivo} colaborador(es) disponível(is) agora ({presencaConfirmadaHoje} confirmado(s) hoje,{' '}
+            ⚠️ Só há {mdoTetoEfetivo} colaborador(es) disponível(is) agora ({presencaConfirmadaHoje} presente(s) agora,{' '}
             {mdoJaAlocadoAgora} já em outra(s) operação(ões) em andamento).
           </p>
         )}

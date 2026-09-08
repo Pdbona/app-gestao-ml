@@ -231,6 +231,7 @@ export default function DashboardTab() {
           turnoId: p.turnoId,
           turnoNome: turno?.nome || '(turno removido)',
           horaInicio: turno?.horaInicio,
+          horaFim: turno?.horaFim,
           planejado: p.qtdMdo,
           presente: presentesGrupo.length,
           presentesGrupo,
@@ -418,7 +419,9 @@ export default function DashboardTab() {
                       >
                         <div>
                           <div style={styles.turnoNome}>{item.turnoNome}</div>
-                          <div style={styles.turnoHora}>{item.horaInicio || '--:--'}</div>
+                          <div style={styles.turnoHora}>
+                            {item.horaInicio || '--:--'}–{item.horaFim || '--:--'}
+                          </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={styles.turnoQtd}>

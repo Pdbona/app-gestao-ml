@@ -4,11 +4,17 @@ import { collection, doc, onSnapshot, updateDoc, serverTimestamp } from 'firebas
 import { ui, NAVY } from '../lib/styles';
 import { formatarDataBr } from '../lib/data';
 
-// Fila de solicitações de presença em atraso (CheckinPublicScreen.jsx cria
-// um doc em `solicitacoesPresenca` quando o colaborador tenta confirmar
-// presença mais de 10min depois do início do turno planejado — sem prazo
-// de expiração automática, fica pendente até a liderança aprovar/negar
-// aqui). É uma tela própria — não embutida no Dashboard — de propósito: a
+// Fila de solicitações de presença que precisam de autorização da liderança
+// (CheckinPublicScreen.jsx cria um doc em `solicitacoesPresenca` — sem
+// prazo de expiração automática, fica pendente até resolver aqui). 2 tipos
+// (`s.tipo`, ver avaliarJanelaEntrada em CheckinPublicScreen.jsx):
+// - 'atraso' (já existia): tentou confirmar chegada mais de 10min depois do
+//   início do turno planejado.
+// - 'retorno' (08/09/2026, pedido do Pablo): já tinha registrado chegada E
+//   saída nesse turno/dia e está tentando confirmar uma NOVA chegada
+//   (precisou voltar por algum motivo). Docs antigos sem `s.tipo` são
+//   tratados como 'atraso' (era o único tipo antes de existir 'retorno').
+// É uma tela própria — não embutida no Dashboard — de propósito: a
 // permissão `abas.autorizacoes` é desacoplada de `abas.dashboard`, pra dar
 // pra um líder de turno autorizar sem precisar de acesso ao Dashboard
 // inteiro. Mesmo padrão visual do modal de "falta" do Dashboard (overlay +
@@ -84,8 +90,9 @@ export default function AutorizacoesScreen({ usuario }) {
     <div>
       <h2 style={ui.sectionTitle}>Autorizações de presença</h2>
       <p style={ui.placeholderNote}>
-        Solicitações de colaboradores que tentaram confirmar presença mais de 10min depois do início
-        do turno planejado pro dia — autorize ou negue pra liberar (ou não) o check-in.
+        Solicitações que precisam de autorização da liderança: chegada com mais de 10min de atraso, ou
+        colaborador tentando confirmar uma NOVA chegada depois de já ter registrado saída no turno hoje
+        — autorize ou negue pra liberar (ou não) o check-in.
       </p>
 
       {erroCarga ? (
@@ -99,11 +106,11 @@ export default function AutorizacoesScreen({ usuario }) {
               <div>
                 <div style={styles.cardColaborador}>{s.colaboradorNome}</div>
                 <div style={styles.cardInfo}>
-                  {s.clienteNome} — {s.turnoNome} ({s.horaInicioTurno}) · {formatarDataBr(s.data)}
+                  {s.clienteNome} — {s.turnoNome} ({s.horaInicioTurno || '--:--'}) · {formatarDataBr(s.data)}
                 </div>
               </div>
               <span style={{ ...ui.badge, ...ui.badgeLaranja }}>
-                {s.minutosAtraso != null ? `${s.minutosAtraso}min de atraso` : 'Pendente'}
+                {s.tipo === 'retorno' ? '🔁 Retorno após saída' : `${s.minutosAtraso ?? '?'}min de atraso`}
               </span>
             </div>
           ))}
@@ -117,9 +124,14 @@ export default function AutorizacoesScreen({ usuario }) {
             <p style={ui.placeholderNote}>
               CPF: {modalSolicitacao.cpf} · {modalSolicitacao.clienteNome} — {modalSolicitacao.turnoNome}
               <br />
-              Início do turno: {modalSolicitacao.horaInicioTurno} · Data: {formatarDataBr(modalSolicitacao.data)}
+              Início do turno: {modalSolicitacao.horaInicioTurno || '--:--'} · Data:{' '}
+              {formatarDataBr(modalSolicitacao.data)}
               <br />
-              Atraso no momento da solicitação: {modalSolicitacao.minutosAtraso}min
+              {modalSolicitacao.tipo === 'retorno' ? (
+                <>Já registrou chegada e saída nesse turno hoje — está pedindo pra confirmar uma NOVA chegada.</>
+              ) : (
+                <>Atraso no momento da solicitação: {modalSolicitacao.minutosAtraso}min</>
+              )}
             </p>
 
             {erro && <div style={ui.erro}>❌ {erro}</div>}

@@ -42,10 +42,15 @@ export default function CheckinPublicScreen({ clienteId }) {
   const [erro, setErro] = useState('');
   const [verificandoCpf, setVerificandoCpf] = useState(false);
   const [mensagemBloqueio, setMensagemBloqueio] = useState('');
-  // Guarda o id da solicitação de presença em atraso já aprovada, pra poder
-  // marcar `consumidaEm` nela depois que a presença for gravada com sucesso
-  // (evita que a mesma aprovação sirva pra uma 2ª presença no mesmo turno/dia).
+  // Guarda o id da solicitação (de atraso OU de retorno após saída, ver
+  // `tipoAutorizacaoPendente` abaixo) já aprovada, pra poder marcar
+  // `consumidaEm` nela depois que a presença for gravada com sucesso (evita
+  // que a mesma aprovação sirva pra uma 2ª presença no mesmo turno/dia).
   const [solicitacaoAprovadaId, setSolicitacaoAprovadaId] = useState(null);
+  // Qual dos 2 motivos de autorização está pendente/foi negado agora — só
+  // controla a MENSAGEM mostrada na tela de espera/bloqueio (08/09/2026,
+  // ver `avaliarJanelaEntrada`).
+  const [tipoAutorizacaoPendente, setTipoAutorizacaoPendente] = useState('atraso'); // 'atraso' | 'retorno'
 
   // ======== Estado específico da SAÍDA ========
   const [presencaAbertaId, setPresencaAbertaId] = useState(null);
@@ -152,14 +157,23 @@ export default function CheckinPublicScreen({ clienteId }) {
   // de janela com 2+ turnos corrigido em 03/09/2026). ========
   const avaliarJanelaEntrada = async (turno, colaboradorEscolhido) => {
     const solicitacaoId = `${colaboradorEscolhido.id}_${clienteId}_${turno.id}_${hojeISO()}`;
+    // Id diferente da solicitação de atraso (prefixo `retorno_`) — são 2
+    // motivos independentes de autorização, podem coexistir no mesmo
+    // turno/dia sem um pisar no outro.
+    const solicitacaoRetornoId = `retorno_${colaboradorEscolhido.id}_${clienteId}_${turno.id}_${hojeISO()}`;
 
     setVerificandoCpf(true);
     try {
-      // Guarda-corpo contra reabrir um turno já concluído (chegada + saída
-      // já registradas hoje) — sem isso, ao escanear o QR de novo depois de
-      // já ter saído, o fluxo trataria como uma chegada nova (a consulta
-      // abaixo em confirmarCpf só acha presença ABERTA) e criaria um 2º
-      // registro pro mesmo turno/dia, poluindo o relatório de presença.
+      // Já teve chegada + saída registradas hoje nesse turno? (sem isso, ao
+      // escanear o QR de novo depois de já ter saído, o fluxo trataria como
+      // uma chegada nova — a consulta em confirmarCpf só acha presença
+      // ABERTA — e criaria um 2º registro sem controle nenhum). Antes
+      // (até 07/09/2026) isso bloqueava direto, sem chance de reabrir.
+      // Agora (pedido do Pablo, 08/09/2026): quando o colaborador PRECISA
+      // mesmo voltar (esqueceu algo, foi chamado de novo etc.), abre uma
+      // solicitação de autorização — mesmo mecanismo/tela da liderança já
+      // usado pra atraso (ver `solicitacoesPresenca` e AutorizacoesScreen)
+      // — e só libera uma NOVA chegada depois de aprovada.
       const fechadaSnap = await getDocs(
         query(
           collection(db, 'presencas'),
@@ -170,8 +184,54 @@ export default function CheckinPublicScreen({ clienteId }) {
         )
       );
       if (fechadaSnap.docs.some((d) => d.data().dataHoraSaida)) {
-        setMensagemBloqueio(`Você já registrou chegada e saída no turno ${turno.nome} hoje.`);
-        setEtapa('bloqueado');
+        const solicRetornoSnap = await getDoc(doc(db, 'solicitacoesPresenca', solicitacaoRetornoId));
+        const solicRetorno = solicRetornoSnap.exists() ? solicRetornoSnap.data() : null;
+
+        if (solicRetorno?.status === 'negada') {
+          setMensagemBloqueio(
+            `Sua solicitação pra registrar uma nova chegada no turno ${turno.nome} hoje foi negada pela liderança. Fale com o Administrativo.`
+          );
+          setEtapa('bloqueado');
+          return;
+        }
+        if (solicRetorno?.status === 'aprovada' && !solicRetorno.consumidaEm) {
+          // Aprovado — segue direto pro resto do wizard (selfie/geo), sem
+          // passar pelas checagens de equipe completa/janela de horário
+          // abaixo: a aprovação da liderança já É a autorização pra essa
+          // chegada específica.
+          setTurnoId(turno.id);
+          setSolicitacaoAprovadaId(solicitacaoRetornoId);
+          setEtapa('selfie');
+          return;
+        }
+        if (solicRetorno?.status === 'pendente') {
+          setTipoAutorizacaoPendente('retorno');
+          setEtapa('aguardandoAutorizacao');
+          return;
+        }
+        // Nenhuma solicitação ainda (ou a última já foi consumida/negada e
+        // isso é uma tentativa de retorno NOVA) — abre uma.
+        await setDoc(doc(db, 'solicitacoesPresenca', solicitacaoRetornoId), {
+          tipo: 'retorno',
+          colaboradorId: colaboradorEscolhido.id,
+          colaboradorNome: colaboradorEscolhido.nome,
+          cpf: normalizarCpf(colaboradorEscolhido.cpf),
+          clienteId,
+          clienteNome: cliente.nome,
+          turnoId: turno.id,
+          turnoNome: turno.nome,
+          horaInicioTurno: turno.horaInicio || null,
+          data: hojeISO(),
+          status: 'pendente',
+          solicitadoEm: serverTimestamp(),
+          resolvidoPor: null,
+          resolvidoPorNome: null,
+          resolvidoEm: null,
+          consumidaEm: null,
+          presencaId: null
+        });
+        setTipoAutorizacaoPendente('retorno');
+        setEtapa('aguardandoAutorizacao');
         return;
       }
 
@@ -218,6 +278,7 @@ export default function CheckinPublicScreen({ clienteId }) {
           return;
         }
         if (solicitacao.status === 'pendente') {
+          setTipoAutorizacaoPendente('atraso');
           setEtapa('aguardandoAutorizacao');
           return;
         }
@@ -239,6 +300,7 @@ export default function CheckinPublicScreen({ clienteId }) {
       }
       if (statusJanela === 'atraso') {
         await setDoc(doc(db, 'solicitacoesPresenca', solicitacaoId), {
+          tipo: 'atraso',
           colaboradorId: colaboradorEscolhido.id,
           colaboradorNome: colaboradorEscolhido.nome,
           cpf: normalizarCpf(colaboradorEscolhido.cpf),
@@ -257,6 +319,7 @@ export default function CheckinPublicScreen({ clienteId }) {
           consumidaEm: null,
           presencaId: null
         });
+        setTipoAutorizacaoPendente('atraso');
         setEtapa('aguardandoAutorizacao');
         return;
       }
@@ -470,24 +533,23 @@ export default function CheckinPublicScreen({ clienteId }) {
     }
   };
 
-  // Reseta o wizard pro início — usado pelo botão "Sair" da tela de
-  // "aguardando autorização" (pedido do Pablo: dar a opção de sair e
-  // avisar que dá pra tentar de novo em 10min).
-  const reiniciar = () => {
-    setEtapa('cpf');
-    setCpfDigitado('');
-    setColaborador(null);
-    setTurnoId('');
-    setSelfie(null);
-    setErro('');
-    setMensagemBloqueio('');
-    setSolicitacaoAprovadaId(null);
-    setModo('entrada');
-    setPresencaAbertaId(null);
-    setTurnoDaSaida(null);
-    setTipoJustificativaSaida(null);
-    setMinutosDesvioSaida(null);
-    setJustificativaSaida('');
+  // Botão "Fechar"/"Sair" das telas finais (sucesso, bloqueado, aguardando
+  // autorização) — antes resetava o wizard de volta pro campo de CPF,
+  // pronto pro PRÓXIMO colaborador digitar sem escanear o QR de novo. O
+  // Pablo pediu pra sair de vez em vez disso (07/09/2026): depois de um
+  // registro, quem usou o celular deveria conseguir "sair completamente"
+  // em vez de deixar a tela pronta pra outro registro em seguida.
+  //
+  // Uma página web NÃO consegue voltar pra tela inicial do celular — isso
+  // é bloqueado por segurança do navegador em qualquer site. O máximo que
+  // dá pra fazer: tentar fechar a ABA (`window.close()` — só funciona se
+  // ela foi aberta por script; vindo de um QR Code/link normal, o
+  // navegador ignora silenciosamente) e, se não fechar, jogar pra uma
+  // página em branco — o importante é NUNCA mais voltar pro campo de CPF
+  // sozinho.
+  const sair = () => {
+    window.close();
+    window.location.href = 'about:blank';
   };
 
   if (carregando) {
@@ -648,7 +710,7 @@ export default function CheckinPublicScreen({ clienteId }) {
                 </>
               )}
             </p>
-            <button style={styles.botaoSecundario} onClick={reiniciar}>
+            <button style={styles.botaoSecundario} onClick={sair}>
               Fechar
             </button>
           </div>
@@ -658,7 +720,7 @@ export default function CheckinPublicScreen({ clienteId }) {
           <div style={styles.sucesso}>
             <p style={styles.sucessoIcone}>❌</p>
             <p style={{ ...styles.sucessoTexto, color: '#D32F2F' }}>{mensagemBloqueio}</p>
-            <button style={styles.botaoSecundario} onClick={reiniciar}>
+            <button style={styles.botaoSecundario} onClick={sair}>
               Fechar
             </button>
           </div>
@@ -668,12 +730,14 @@ export default function CheckinPublicScreen({ clienteId }) {
           <div style={styles.sucesso}>
             <p style={styles.sucessoIcone}>⏳</p>
             <p style={styles.sucessoTexto}>
-              Solicitação de presença em atraso enviada, aguarde 10min para liberação pela liderança!
+              {tipoAutorizacaoPendente === 'retorno'
+                ? 'Você já registrou saída neste turno hoje — pra confirmar uma NOVA chegada, a liderança precisa autorizar. Solicitação enviada!'
+                : 'Solicitação de presença em atraso enviada, aguarde 10min para liberação pela liderança!'}
             </p>
             <p style={{ fontSize: 13, color: '#666', marginTop: -6 }}>
-              Você pode sair e tentar de novo daqui a 10 minutos.
+              Você pode sair e tentar de novo daqui a alguns minutos.
             </p>
-            <button style={styles.botaoSecundario} onClick={reiniciar}>
+            <button style={styles.botaoSecundario} onClick={sair}>
               Sair
             </button>
           </div>

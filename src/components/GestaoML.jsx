@@ -247,8 +247,8 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
           de ~360px. */}
       <style>{`
         @keyframes popupAutorizacaoPulso {
-          0%, 100% { box-shadow: 0 6px 24px rgba(0,0,0,0.18); }
-          50% { box-shadow: 0 6px 26px rgba(255,107,0,0.45); }
+          0%, 100% { box-shadow: 0 12px 40px rgba(0,0,0,0.3); }
+          50% { box-shadow: 0 12px 46px rgba(255,107,0,0.55); }
         }
         @media (max-width: 640px) {
           .app-header {
@@ -439,15 +439,18 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
       </div>
 
       {pendentesAutorizacao > 0 && abaAtual !== 'autorizacoes' && (
-        <button type="button" style={styles.popupAutorizacao} onClick={() => setAbaAtual('autorizacoes')}>
-          <span style={styles.popupAutorizacaoIcone}>🔔</span>
-          <span>
-            <strong>{pendentesAutorizacao}</strong> solicitação{pendentesAutorizacao > 1 ? 'ões' : ''} de presença
-            pendente{pendentesAutorizacao > 1 ? 's' : ''}
-            <br />
-            <span style={styles.popupAutorizacaoLink}>Ver agora →</span>
-          </span>
-        </button>
+        <>
+          <div style={styles.popupAutorizacaoFundo} />
+          <button type="button" style={styles.popupAutorizacao} onClick={() => setAbaAtual('autorizacoes')}>
+            <span style={styles.popupAutorizacaoIcone}>🔔</span>
+            <span>
+              <strong>{pendentesAutorizacao}</strong> solicitação{pendentesAutorizacao > 1 ? 'ões' : ''} de presença
+              pendente{pendentesAutorizacao > 1 ? 's' : ''}
+              <br />
+              <span style={styles.popupAutorizacaoLink}>Ver agora →</span>
+            </span>
+          </button>
+        </>
       )}
     </div>
   );
@@ -593,25 +596,37 @@ const styles = {
   // há nenhuma pendente ou quando o usuário já está na aba Autorizações
   // (reativo, sem botão de "dispensar": resolve sozinho quando a fila
   // esvazia, mesmo espírito do alerta de falta do Dashboard).
+  // Centralizado + bem maior (pedido do Pablo, 08/09/2026 — o canto
+  // inferior direito passava despercebido). O fundo escurecido reforça a
+  // urgência mas fica com `pointerEvents: none`: só o card em si é
+  // clicável, o resto da tela continua utilizável por trás dele.
+  popupAutorizacaoFundo: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(15,23,42,0.45)',
+    zIndex: 1199,
+    pointerEvents: 'none'
+  },
   popupAutorizacao: {
     position: 'fixed',
-    bottom: 24,
-    right: 24,
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
     zIndex: 1200,
     display: 'flex',
-    alignItems: 'flex-start',
-    gap: 12,
+    alignItems: 'center',
+    gap: 20,
     background: '#FFF',
-    border: `2px solid ${ORANGE}`,
-    borderRadius: 12,
-    padding: '14px 18px',
-    maxWidth: 300,
+    border: `3px solid ${ORANGE}`,
+    borderRadius: 18,
+    padding: '30px 36px',
+    maxWidth: 440,
     textAlign: 'left',
-    fontSize: 13,
+    fontSize: 18,
     color: '#333',
     cursor: 'pointer',
     animation: 'popupAutorizacaoPulso 2.2s ease-in-out infinite'
   },
-  popupAutorizacaoIcone: { fontSize: 22, lineHeight: 1 },
-  popupAutorizacaoLink: { color: ORANGE, fontWeight: 700, fontSize: 12 }
+  popupAutorizacaoIcone: { fontSize: 44, lineHeight: 1 },
+  popupAutorizacaoLink: { display: 'inline-block', marginTop: 6, color: ORANGE, fontWeight: 700, fontSize: 16 }
 };

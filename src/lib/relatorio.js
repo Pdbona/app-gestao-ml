@@ -156,6 +156,12 @@ export function resumoPeriodo(registros, planejamentos, presencas) {
   const totalOperacoes = registros.length;
   const totalPlanejado = planejamentos.reduce((soma, p) => soma + (Number(p.qtdMdo) || 0), 0);
   const totalPresente = presencas.length;
-  const absenteismoPct = totalPlanejado > 0 ? Math.round(((totalPlanejado - totalPresente) / totalPlanejado) * 100) : 0;
+  // Sem teto: quando presente > planejado (comum depois de cancelar
+  // planejamento retroativo sem tocar na presença já confirmada — ela é
+  // um fato à parte, não desaparece), a conta virava um percentual
+  // negativo sem sentido (ex: -325%). "Mais gente presente que o
+  // planejado" não é "absenteísmo negativo", é 0% de absenteísmo.
+  const absenteismoPct =
+    totalPlanejado > 0 ? Math.max(0, Math.round(((totalPlanejado - totalPresente) / totalPlanejado) * 100)) : 0;
   return { totalOperacoes, totalPlanejado, totalPresente, absenteismoPct };
 }

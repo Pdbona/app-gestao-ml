@@ -198,6 +198,25 @@ export default function ColetorScreen({ usuario }) {
     setIdFinalizando(null);
   };
 
+  // Fecha a tentativa de "Nova operação" quando ela travou por falta de
+  // MdO planejada pro cliente escolhido (09/09/2026, pedido do Pablo) —
+  // limpa o formulário inteiro (sem isso, quem não é supervisor não tinha
+  // NENHUM jeito de sair dessa tela: o "← Voltar pra lista" só existe pro
+  // modo supervisão, e pro perfil "exclusivo" de Coletor essa tela é a
+  // única coisa visível, sidebar escondida e tudo).
+  const fecharNovaOperacaoBloqueada = () => {
+    setClienteId('');
+    setTipoId('');
+    setFluxoId('');
+    setDocumentoProcesso('');
+    setQtdVolumes('');
+    setTipoVolume('');
+    setQtdMdo('');
+    setFotosInicio([]);
+    setErro('');
+    if (souSupervisor) voltarParaLista();
+  };
+
   const fluxoDaAtiva = fluxos.find((f) => f.id === operacaoParaFinalizar?.fluxoId);
   const tipoDaAtiva = tipos.find((t) => t.id === operacaoParaFinalizar?.tipoOperacaoId);
   const clienteDaAtiva = clientes.find((c) => c.id === operacaoParaFinalizar?.clienteId);
@@ -237,6 +256,15 @@ export default function ColetorScreen({ usuario }) {
   // planejado), mas o `min` deixa isso garantido mesmo se um dia
   // divergirem.
   const mdoTetoEfetivo = clienteId ? Math.min(mdoPlanejadoHoje, mdoDisponivelAgora) : 0;
+
+  // Bloqueio "duro" (09/09/2026, pedido do Pablo): sem NENHUM planejamento
+  // pro cliente hoje não tem por onde continuar (nem trocar de MdO
+  // resolve) — diferente do aviso de "sem colaborador disponível AGORA"
+  // (mdoPlanejadoHoje > 0), que pode se resolver sozinho se alguém
+  // confirmar presença ainda hoje. Só nesse caso "duro" o form esconde o
+  // resto dos campos e mostra o aviso já no topo, junto com um jeito de
+  // fechar a tentativa.
+  const bloqueadoSemPlanejamento = Boolean(clienteId) && mdoPlanejadoHoje === 0;
 
   // Zera as fotos de início quando troca de Operação (a quantidade exigida
   // muda de uma pra outra).
@@ -498,128 +526,138 @@ export default function ColetorScreen({ usuario }) {
           </select>
         </label>
 
-        <label style={styles.rotulo}>
-          Tipo de Operação *
-          <span style={styles.ajuda}>O que está sendo manuseado (ex: pneus, geladeira)</span>
-          <select style={styles.input} value={tipoId} onChange={(e) => setTipoId(e.target.value)}>
-            <option value="">Selecione...</option>
-            {tipos.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label style={styles.rotulo}>
-          Operação (fluxo) *
-          <span style={styles.ajuda}>Etapa do processo: recebimento, separação, expedição...</span>
-          <select style={styles.input} value={fluxoId} onChange={(e) => setFluxoId(e.target.value)}>
-            <option value="">Selecione...</option>
-            {fluxos.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label style={styles.rotulo}>
-          Documento do processo *
-          <span style={styles.ajuda}>Número da NF, Conhecimento ou Pedido</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            style={styles.input}
-            value={documentoProcesso}
-            onChange={(e) => setDocumentoProcesso(e.target.value)}
-            placeholder="Nº do documento"
-          />
-        </label>
-
-        <div style={styles.duasColunas}>
-          <label style={styles.rotulo}>
-            Qtd. de volumes *
-            <span style={styles.ajuda}>Itens/paletes desta operação</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min="1"
-              style={styles.input}
-              value={qtdVolumes}
-              onChange={(e) => setQtdVolumes(e.target.value)}
-            />
-          </label>
-          <label style={styles.rotulo}>
-            Tipo de volume *
-            <span style={styles.ajuda}>Como está embalado</span>
-            <select style={styles.input} value={tipoVolume} onChange={(e) => setTipoVolume(e.target.value)}>
-              <option value="">Selecione...</option>
-              {TIPOS_VOLUME.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <label style={styles.rotulo}>
-          Qtd. de MdO *
-          <span style={styles.ajuda}>
-            {clienteId
-              ? `Colaboradores nesta operação (máx. ${mdoTetoEfetivo} disponível agora)`
-              : 'Colaboradores dedicados a esta operação'}
-          </span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min="1"
-            max={clienteId ? mdoTetoEfetivo : undefined}
-            style={styles.input}
-            value={qtdMdo}
-            onChange={(e) => setQtdMdo(e.target.value)}
-          />
-        </label>
-        {clienteId && mdoPlanejadoHoje === 0 && (
-          <p style={styles.avisoPlanejamento}>
-            ⚠️ Não há MdO planejada pra hoje neste cliente. Peça pro Administrativo lançar em
-            Planejamento antes de iniciar.
-          </p>
-        )}
-        {clienteId && mdoPlanejadoHoje > 0 && mdoDisponivelAgora === 0 && (
-          <p style={styles.avisoPlanejamento}>
-            ⚠️ Não há colaborador disponível agora neste cliente — ou ninguém com presença aberta no
-            local, ou todos já estão em outra(s) operação(ões) em andamento. Assim que alguém
-            confirmar presença ou alguma operação finalizar, a MdO fica livre pra próxima.
-          </p>
-        )}
-        {clienteId && mdoDisponivelAgora > 0 && Number(qtdMdo) > mdoTetoEfetivo && (
-          <p style={styles.avisoPlanejamento}>
-            ⚠️ Só há {mdoTetoEfetivo} colaborador(es) disponível(is) agora ({presencaConfirmadaHoje} presente(s) agora,{' '}
-            {mdoJaAlocadoAgora} já em outra(s) operação(ões) em andamento).
-          </p>
+        {bloqueadoSemPlanejamento && (
+          <div style={styles.avisoBloqueio}>
+            <p style={styles.avisoBloqueioTexto}>
+              ⚠️ Não há MdO planejada pra hoje neste cliente. Peça pro Administrativo lançar em
+              Planejamento antes de iniciar.
+            </p>
+            <button type="button" style={styles.botaoFecharBloqueio} onClick={fecharNovaOperacaoBloqueada}>
+              ✕ Fechar
+            </button>
+          </div>
         )}
 
-        {fluxoSelecionado && (
-          <GradeFotos
-            quantidade={fluxoSelecionado.fotosInicio || 0}
-            arquivos={fotosInicio}
-            onChangeSlot={setFotoInicioSlot}
-            prefixo="de início"
-          />
+        {!bloqueadoSemPlanejamento && (
+          <>
+            <label style={styles.rotulo}>
+              Tipo de Operação *
+              <span style={styles.ajuda}>O que está sendo manuseado (ex: pneus, geladeira)</span>
+              <select style={styles.input} value={tipoId} onChange={(e) => setTipoId(e.target.value)}>
+                <option value="">Selecione...</option>
+                {tipos.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={styles.rotulo}>
+              Operação (fluxo) *
+              <span style={styles.ajuda}>Etapa do processo: recebimento, separação, expedição...</span>
+              <select style={styles.input} value={fluxoId} onChange={(e) => setFluxoId(e.target.value)}>
+                <option value="">Selecione...</option>
+                {fluxos.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={styles.rotulo}>
+              Documento do processo *
+              <span style={styles.ajuda}>Número da NF, Conhecimento ou Pedido</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                style={styles.input}
+                value={documentoProcesso}
+                onChange={(e) => setDocumentoProcesso(e.target.value)}
+                placeholder="Nº do documento"
+              />
+            </label>
+
+            <div style={styles.duasColunas}>
+              <label style={styles.rotulo}>
+                Qtd. de volumes *
+                <span style={styles.ajuda}>Itens/paletes desta operação</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  style={styles.input}
+                  value={qtdVolumes}
+                  onChange={(e) => setQtdVolumes(e.target.value)}
+                />
+              </label>
+              <label style={styles.rotulo}>
+                Tipo de volume *
+                <span style={styles.ajuda}>Como está embalado</span>
+                <select style={styles.input} value={tipoVolume} onChange={(e) => setTipoVolume(e.target.value)}>
+                  <option value="">Selecione...</option>
+                  {TIPOS_VOLUME.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label style={styles.rotulo}>
+              Qtd. de MdO *
+              <span style={styles.ajuda}>
+                {clienteId
+                  ? `Colaboradores nesta operação (máx. ${mdoTetoEfetivo} disponível agora)`
+                  : 'Colaboradores dedicados a esta operação'}
+              </span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                max={clienteId ? mdoTetoEfetivo : undefined}
+                style={styles.input}
+                value={qtdMdo}
+                onChange={(e) => setQtdMdo(e.target.value)}
+              />
+            </label>
+            {mdoPlanejadoHoje > 0 && mdoDisponivelAgora === 0 && (
+              <p style={styles.avisoPlanejamento}>
+                ⚠️ Não há colaborador disponível agora neste cliente — ou ninguém com presença aberta no
+                local, ou todos já estão em outra(s) operação(ões) em andamento. Assim que alguém
+                confirmar presença ou alguma operação finalizar, a MdO fica livre pra próxima.
+              </p>
+            )}
+            {mdoDisponivelAgora > 0 && Number(qtdMdo) > mdoTetoEfetivo && (
+              <p style={styles.avisoPlanejamento}>
+                ⚠️ Só há {mdoTetoEfetivo} colaborador(es) disponível(is) agora ({presencaConfirmadaHoje} presente(s)
+                agora, {mdoJaAlocadoAgora} já em outra(s) operação(ões) em andamento).
+              </p>
+            )}
+
+            {fluxoSelecionado && (
+              <GradeFotos
+                quantidade={fluxoSelecionado.fotosInicio || 0}
+                arquivos={fotosInicio}
+                onChangeSlot={setFotoInicioSlot}
+                prefixo="de início"
+              />
+            )}
+
+            {erro && <div style={styles.erro}>❌ {erro}</div>}
+
+            <button
+              style={{ ...styles.botaoGrande, ...styles.botaoIniciar, ...(!podeIniciar ? styles.botaoDesabilitado : {}) }}
+              onClick={iniciar}
+              disabled={salvando || !podeIniciar}
+            >
+              {salvando ? 'Iniciando...' : '▶ Iniciar operação'}
+            </button>
+            {!podeIniciar && <p style={styles.dicaBotao}>Preencha todos os campos e fotos obrigatórias pra liberar.</p>}
+          </>
         )}
-
-        {erro && <div style={styles.erro}>❌ {erro}</div>}
-
-        <button
-          style={{ ...styles.botaoGrande, ...styles.botaoIniciar, ...(!podeIniciar ? styles.botaoDesabilitado : {}) }}
-          onClick={iniciar}
-          disabled={salvando || !podeIniciar}
-        >
-          {salvando ? 'Iniciando...' : '▶ Iniciar operação'}
-        </button>
-        {!podeIniciar && <p style={styles.dicaBotao}>Preencha todos os campos e fotos obrigatórias pra liberar.</p>}
       </div>
     </div>
     );
@@ -766,6 +804,29 @@ const styles = {
     borderRadius: 6,
     marginTop: -8,
     marginBottom: 14
+  },
+  // Bloqueio "duro" de sem-planejamento (09/09/2026) — vem logo abaixo do
+  // Cliente/Local, mais chamativo que o aviso normal (borda + fundo mais
+  // forte) já que aqui não dá pra seguir de jeito nenhum, e carrega o
+  // botão de fechar a tentativa (ver fecharNovaOperacaoBloqueada).
+  avisoBloqueio: {
+    background: '#FFF3E0',
+    border: '1px solid #F0B860',
+    borderRadius: 8,
+    padding: '12px 14px',
+    marginBottom: 16
+  },
+  avisoBloqueioTexto: { margin: '0 0 10px', color: '#B85700', fontSize: 13, lineHeight: 1.4 },
+  botaoFecharBloqueio: {
+    width: '100%',
+    padding: 10,
+    background: '#FFF',
+    color: '#B85700',
+    border: '1px solid #B85700',
+    borderRadius: 8,
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: 'pointer'
   },
   input: {
     padding: '13px 12px',

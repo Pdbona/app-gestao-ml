@@ -25,8 +25,11 @@ export function filtrarRegistros(registros, clienteId, dataInicio, dataFim) {
   return noPeriodo(registros.filter((r) => !r.cancelado), clienteId, dataInicio, dataFim, 'inicio', true);
 }
 
+// Planejamento cancelado (PlanejamentoScreen.jsx, 09/09/2026) fica
+// invisível pra qualquer cálculo/relatório — mesmo tratamento de
+// `!r.cancelado` já usado em filtrarRegistros.
 export function filtrarPlanejamentos(planejamentos, clienteId, dataInicio, dataFim) {
-  return noPeriodo(planejamentos, clienteId, dataInicio, dataFim, 'data', false);
+  return noPeriodo(planejamentos.filter((p) => !p.cancelado), clienteId, dataInicio, dataFim, 'data', false);
 }
 
 export function filtrarPresencas(presencas, clienteId, dataInicio, dataFim) {

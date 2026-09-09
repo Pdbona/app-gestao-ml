@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../firebase';
-import { collection, setDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, setDoc, updateDoc, doc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { ui, NAVY } from '../lib/styles';
 import { hojeISO, datasNoIntervalo, formatarDataBr } from '../lib/data';
 
@@ -19,7 +19,7 @@ const FORM_VAZIO = {
 // Também abriga a configuração de quantos dias a selfie do check-in fica
 // guardada antes de ser apagada (ColetorScreen/Dashboard fazem a limpeza
 // de verdade, aqui é só onde o número é ajustado).
-export default function PlanejamentoScreen() {
+export default function PlanejamentoScreen({ usuario }) {
   const [clientes, setClientes] = useState([]);
   const [turnos, setTurnos] = useState([]);
   const [planejamentos, setPlanejamentos] = useState([]);
@@ -111,11 +111,24 @@ export default function PlanejamentoScreen() {
       await Promise.all(
         datas.map((data) => {
           const id = `${form.clienteId}_${data}_${form.turnoId}`;
-          return setDoc(
-            doc(db, 'planejamentoOperacional', id),
-            { clienteId: form.clienteId, data, turnoId: form.turnoId, qtdMdo: qtd },
-            { merge: true }
-          );
+          // Registra quem CRIOU (só na 1ª vez, doc ainda não existia) ou
+          // quem AJUSTOU (já existia — inclusive datas de uma sequência
+          // que caem em cima de planejamento já lançado antes) — pedido
+          // do Pablo (09/09/2026): "grave quem fez, assim como quem
+          // cancela e ajusta os planejamentos". `cancelado` só é
+          // resetado pra `false` num doc NOVO — editar um cancelado por
+          // aqui não reativa sozinho, só "Reativar" faz isso de propósito.
+          const jaExiste = planejamentos.some((x) => x.id === id);
+          const payload = { clienteId: form.clienteId, data, turnoId: form.turnoId, qtdMdo: qtd };
+          if (jaExiste) {
+            payload.ajustadoPorNome = usuario.nome;
+            payload.ajustadoEm = serverTimestamp();
+          } else {
+            payload.cancelado = false;
+            payload.criadoPorNome = usuario.nome;
+            payload.criadoEm = serverTimestamp();
+          }
+          return setDoc(doc(db, 'planejamentoOperacional', id), payload, { merge: true });
         })
       );
       cancelar();
@@ -126,12 +139,24 @@ export default function PlanejamentoScreen() {
     }
   };
 
-  const excluir = async (p) => {
-    if (!window.confirm(`Excluir o planejamento de ${formatarDataBr(p.data)} (${nomeCliente(p.clienteId)})?`)) return;
+  // "Cancelar" nunca apaga — mesmo padrão de registrosOperacao
+  // (AjusteRegistrosScreen.jsx): só marca `cancelado: true` (some do
+  // cálculo de MdO disponível no Coletor/Dashboard/Relatórios), guardando
+  // quem cancelou e quando. "Reativar" limpa esses 2 campos de novo.
+  const alternarCancelamento = async (p) => {
+    const vaiCancelar = !p.cancelado;
+    const msg = vaiCancelar
+      ? `Cancelar o planejamento de ${formatarDataBr(p.data)} (${nomeCliente(p.clienteId)})? Ele some do teto de MdO do Coletor e dos cálculos, mas continua guardado.`
+      : `Reativar o planejamento de ${formatarDataBr(p.data)} (${nomeCliente(p.clienteId)})?`;
+    if (!window.confirm(msg)) return;
     try {
-      await deleteDoc(doc(db, 'planejamentoOperacional', p.id));
+      await updateDoc(doc(db, 'planejamentoOperacional', p.id), {
+        cancelado: vaiCancelar,
+        canceladoPorNome: vaiCancelar ? usuario.nome : null,
+        canceladoEm: vaiCancelar ? serverTimestamp() : null
+      });
     } catch (e) {
-      setErro('Falha ao excluir. Tente novamente.');
+      setErro('Falha ao salvar. Tente novamente.');
     }
   };
 
@@ -292,12 +317,22 @@ export default function PlanejamentoScreen() {
             <div key={clienteId} style={styles.clienteCard}>
               <div style={styles.clienteCardHeader}>{nomeCliente(clienteId)}</div>
               {itens.map((p) => (
-                <div key={p.id} style={styles.itemRow}>
+                <div key={p.id} style={{ ...styles.itemRow, ...(p.cancelado ? styles.itemRowCancelado : {}) }}>
                   <div>
                     <div style={styles.itemData}>
                       {p.data === hoje ? 'Hoje' : formatarDataBr(p.data)}
+                      {p.cancelado && (
+                        <span style={{ ...ui.badge, ...ui.badgeCinza, marginLeft: 6 }}>Cancelada</span>
+                      )}
                     </div>
                     <div style={styles.itemTurno}>{nomeTurno(p.turnoId)}</div>
+                    {p.cancelado ? (
+                      <div style={styles.itemAutoria}>Cancelado por {p.canceladoPorNome}</div>
+                    ) : p.ajustadoPorNome ? (
+                      <div style={styles.itemAutoria}>Ajustado por {p.ajustadoPorNome}</div>
+                    ) : p.criadoPorNome ? (
+                      <div style={styles.itemAutoria}>Lançado por {p.criadoPorNome}</div>
+                    ) : null}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={styles.itemQtd}>{p.qtdMdo} MdO</div>
@@ -305,8 +340,11 @@ export default function PlanejamentoScreen() {
                       <button style={{ ...ui.linkButton, fontSize: 12, marginRight: 10 }} onClick={() => abrirEdicao(p)}>
                         Editar
                       </button>
-                      <button style={{ ...ui.linkButton, fontSize: 12, color: '#D32F2F' }} onClick={() => excluir(p)}>
-                        Excluir
+                      <button
+                        style={{ ...ui.linkButton, fontSize: 12, color: p.cancelado ? NAVY : '#D32F2F' }}
+                        onClick={() => alternarCancelamento(p)}
+                      >
+                        {p.cancelado ? 'Reativar' : 'Cancelar'}
                       </button>
                     </div>
                   </div>
@@ -368,5 +406,10 @@ const styles = {
   },
   itemData: { fontSize: 13, fontWeight: 600, color: '#333' },
   itemTurno: { fontSize: 11, color: '#999' },
-  itemQtd: { fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 4 }
+  itemQtd: { fontSize: 13, fontWeight: 700, color: NAVY, marginBottom: 4 },
+  // Planejamento cancelado (09/09/2026) some dos cálculos mas continua
+  // visível aqui, meio apagado — mesmo espírito do "some do cálculo, não
+  // do registro" já usado em registrosOperacao.
+  itemRowCancelado: { opacity: 0.6 },
+  itemAutoria: { fontSize: 10, color: '#999', marginTop: 2 }
 };

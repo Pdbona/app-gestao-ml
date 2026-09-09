@@ -142,7 +142,10 @@ export default function ColetorScreen({ usuario }) {
       setClientes(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.status !== 'inativo'));
     });
     const unsubPlanejamentos = onSnapshot(collection(db, 'planejamentoOperacional'), (snap) => {
-      setPlanejamentos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      // Planejamento cancelado (PlanejamentoScreen.jsx, 09/09/2026) não
+      // conta mais pro teto de MdO disponível — mesmo tratamento de
+      // `!r.cancelado` já usado pra registrosOperacao.
+      setPlanejamentos(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.cancelado));
     });
     const unsubPresencas = onSnapshot(collection(db, 'presencas'), (snap) => {
       setPresencas(snap.docs.map((d) => ({ id: d.id, ...d.data() })));

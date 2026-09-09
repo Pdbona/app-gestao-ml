@@ -54,7 +54,7 @@ const BORDA_STATUS = {
   aguardando: '#FFE0BD'
 };
 
-export default function DashboardTab() {
+export default function DashboardTab({ usuario }) {
   const [clientes, setClientes] = useState([]);
   const [turnos, setTurnos] = useState([]);
   const [planejamentos, setPlanejamentos] = useState([]);
@@ -77,8 +77,10 @@ export default function DashboardTab() {
     const unsubs = [
       onSnapshot(collection(db, 'clientes'), (snap) => setClientes(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
       onSnapshot(collection(db, 'turnos'), (snap) => setTurnos(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      // Planejamento cancelado (PlanejamentoScreen.jsx, 09/09/2026) some
+      // do Dashboard, mesmo tratamento de `!cancelado` do registro.
       onSnapshot(collection(db, 'planejamentoOperacional'), (snap) =>
-        setPlanejamentos(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+        setPlanejamentos(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !p.cancelado))
       ),
       onSnapshot(collection(db, 'presencas'), (snap) => setPresencas(snap.docs.map((d) => ({ id: d.id, ...d.data() })))),
       // Registro cancelado (AjusteRegistrosScreen.jsx) some do Dashboard —
@@ -318,7 +320,9 @@ export default function DashboardTab() {
       await updateDoc(doc(db, 'planejamentoOperacional', modalFalta.planejamentoId), {
         qtdMdo: qtd,
         faltaAceita: false,
-        faltaAceitaQtd: 0
+        faltaAceitaQtd: 0,
+        ajustadoPorNome: usuario.nome,
+        ajustadoEm: serverTimestamp()
       });
       fecharModalFalta();
     } catch (e) {
@@ -335,6 +339,7 @@ export default function DashboardTab() {
       await updateDoc(doc(db, 'planejamentoOperacional', modalFalta.planejamentoId), {
         faltaAceita: true,
         faltaAceitaQtd: modalFalta.planejado - modalFalta.presente,
+        faltaAceitaPorNome: usuario.nome,
         faltaAceitaEm: serverTimestamp()
       });
       fecharModalFalta();

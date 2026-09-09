@@ -80,7 +80,12 @@ export default function CheckinPublicScreen({ clienteId }) {
         const planSnap = await getDocs(
           query(collection(db, 'planejamentoOperacional'), where('clienteId', '==', clienteId), where('data', '==', hojeISO()))
         );
-        const turnoIdsPlanejados = [...new Set(planSnap.docs.map((d) => d.data().turnoId))];
+        // Planejamento cancelado (PlanejamentoScreen.jsx, 09/09/2026) não
+        // conta como "planejado pra hoje" — mesmo tratamento de
+        // `!cancelado` já usado pros outros consumidores desta coleção.
+        const turnoIdsPlanejados = [
+          ...new Set(planSnap.docs.filter((d) => !d.data().cancelado).map((d) => d.data().turnoId))
+        ];
 
         const turnosSnap = await getDocs(collection(db, 'turnos'));
         const turnosAtivos = turnosSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((t) => t.ativo !== false);
@@ -244,7 +249,9 @@ export default function CheckinPublicScreen({ clienteId }) {
       // determinístico (`${clienteId}_${data}_${turnoId}`, ver
       // PlanejamentoScreen.jsx), então dá pra buscar direto sem query.
       const planSnap = await getDoc(doc(db, 'planejamentoOperacional', `${clienteId}_${hojeISO()}_${turno.id}`));
-      if (planSnap.exists()) {
+      // Planejamento cancelado conta como se não existisse (mesmo
+      // tratamento dos outros pontos que leem esta coleção).
+      if (planSnap.exists() && !planSnap.data().cancelado) {
         const planejado = Number(planSnap.data().qtdMdo) || 0;
         const presencasTurnoSnap = await getDocs(
           query(

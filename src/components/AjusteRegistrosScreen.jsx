@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { ui, NAVY } from '../lib/styles';
-import { hojeISO, addDiasISO, paraMillis, dataLocalISO, formatarDataBr, formatarHorario } from '../lib/data';
+import { hojeISO, addDiasISO, paraMillis, dataLocalISO, formatarDataBr, formatarHorario, formatarDataHoraCurta } from '../lib/data';
 import { TIPOS_VOLUME } from './ColetorScreen';
 
 const PERIODO_PADRAO_DIAS = 7;
@@ -64,6 +64,14 @@ export default function AjusteRegistrosScreen({ usuario }) {
   const [form, setForm] = useState(FORM_VAZIO);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+
+  // Detalhe do que foi ajustado (09/09/2026, pedido do Pablo: "quando
+  // clico na linha ajustada, abre o que foi ajustado") — não existe um
+  // histórico de valores ANTERIORES gravado (edição sobrescreve os campos
+  // direto), então o modal mostra o registro completo como ele está hoje,
+  // incluindo os campos que não cabem na tabela (observação, quem/quando
+  // ajustou ou cancelou).
+  const [registroDetalhe, setRegistroDetalhe] = useState(null);
 
   useEffect(() => {
     const unsubs = [
@@ -404,7 +412,12 @@ export default function AjusteRegistrosScreen({ usuario }) {
                 const status = statusDoRegistro(r);
                 const info = STATUS_INFO[status];
                 return (
-                  <tr key={r.id}>
+                  <tr
+                    key={r.id}
+                    onClick={() => r.ajustadoManualmente && setRegistroDetalhe(r)}
+                    style={r.ajustadoManualmente ? styles.linhaClicavel : undefined}
+                    title={r.ajustadoManualmente ? 'Clique pra ver o que foi ajustado' : undefined}
+                  >
                     <td style={ui.td}>
                       {formatarDataBr(dataLocalISO(new Date(paraMillis(r.inicio) || Date.now())))} {formatarHorario(r.inicio)}
                     </td>
@@ -427,17 +440,17 @@ export default function AjusteRegistrosScreen({ usuario }) {
                       )}
                     </td>
                     <td style={ui.td}>
-                      <button style={ui.linkButton} onClick={() => abrirEdicao(r)}>
+                      <button style={ui.linkButton} onClick={(e) => { e.stopPropagation(); abrirEdicao(r); }}>
                         Editar
                       </button>
                       {!r.fim && !r.cancelado && (
-                        <button style={ui.linkButton} onClick={() => finalizarAgora(r)}>
+                        <button style={ui.linkButton} onClick={(e) => { e.stopPropagation(); finalizarAgora(r); }}>
                           Finalizar agora
                         </button>
                       )}
                       <button
                         style={{ ...ui.linkButton, color: r.cancelado ? NAVY : '#D32F2F' }}
-                        onClick={() => alternarCancelamento(r)}
+                        onClick={(e) => { e.stopPropagation(); alternarCancelamento(r); }}
                       >
                         {r.cancelado ? 'Reativar' : 'Cancelar'}
                       </button>
@@ -449,6 +462,110 @@ export default function AjusteRegistrosScreen({ usuario }) {
           </table>
         </div>
       )}
+
+      {registroDetalhe && (
+        <div style={styles.overlay} onClick={() => setRegistroDetalhe(null)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, color: NAVY }}>O que foi ajustado</h3>
+            <p style={ui.placeholderNote}>
+              Não guardamos os valores de ANTES do ajuste — aqui está o registro completo como ele
+              está gravado hoje.
+            </p>
+
+            <div style={styles.detalheGrid}>
+              <div><strong>Cliente/Local</strong><br />{nomeCliente(registroDetalhe.clienteId)}</div>
+              <div><strong>Tipo de Operação</strong><br />{nomeTipo(registroDetalhe.tipoOperacaoId)}</div>
+              <div><strong>Operação</strong><br />{nomeFluxo(registroDetalhe.fluxoId)}</div>
+              <div><strong>Documento</strong><br />{registroDetalhe.documentoProcesso || '—'}</div>
+              <div><strong>Volumes</strong><br />{registroDetalhe.qtdVolumes} {registroDetalhe.tipoVolume || ''}</div>
+              <div><strong>MdO</strong><br />{registroDetalhe.qtdMdo}</div>
+              <div><strong>Início</strong><br />{formatarDataHoraCurta(registroDetalhe.inicio) || '—'}</div>
+              <div><strong>Fim</strong><br />{registroDetalhe.fim ? formatarDataHoraCurta(registroDetalhe.fim) : '— (em andamento)'}</div>
+              <div>
+                <strong>Tempo real</strong><br />
+                {registroDetalhe.tempoRealMinutos != null ? `${registroDetalhe.tempoRealMinutos} min` : '—'}
+              </div>
+              <div>
+                <strong>Status</strong><br />
+                <span style={{ ...ui.badge, ...ui[STATUS_INFO[statusDoRegistro(registroDetalhe)].estilo] }}>
+                  {STATUS_INFO[statusDoRegistro(registroDetalhe)].label}
+                </span>
+              </div>
+              <div><strong>Iniciado por (Coletor)</strong><br />{registroDetalhe.usuarioNome || '(lançamento manual)'}</div>
+              <div>
+                <strong>Ajustado por</strong><br />
+                {registroDetalhe.ajustadoPorNome || '—'} em {formatarDataHoraCurta(registroDetalhe.ajustadoEm) || '—'}
+              </div>
+              {registroDetalhe.cancelado && (
+                <div>
+                  <strong>Cancelado por</strong><br />
+                  {registroDetalhe.canceladoPorNome || '—'} em {formatarDataHoraCurta(registroDetalhe.canceladoEm) || '—'}
+                </div>
+              )}
+            </div>
+
+            {registroDetalhe.observacao && (
+              <div style={styles.observacaoBox}>
+                <strong>Observação</strong>
+                <p style={{ margin: '4px 0 0' }}>{registroDetalhe.observacao}</p>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button
+                style={ui.primaryButton}
+                onClick={() => {
+                  abrirEdicao(registroDetalhe);
+                  setRegistroDetalhe(null);
+                }}
+              >
+                Editar
+              </button>
+              <button style={ui.secondaryButton} onClick={() => setRegistroDetalhe(null)}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const styles = {
+  linhaClicavel: { cursor: 'pointer' },
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000
+  },
+  modal: {
+    background: '#FFF',
+    borderRadius: 10,
+    padding: '24px 28px',
+    maxWidth: 640,
+    width: '94%',
+    maxHeight: '88vh',
+    overflowY: 'auto',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.25)'
+  },
+  detalheGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '14px 18px',
+    fontSize: 13,
+    color: '#333'
+  },
+  observacaoBox: {
+    marginTop: 16,
+    padding: '10px 14px',
+    background: '#F7F8FA',
+    borderRadius: 8,
+    border: '1px solid #E5E5E5',
+    fontSize: 13
+  }
+};

@@ -96,6 +96,13 @@ async function autenticar(senhaDigitada) {
 // ============================================================
 function LoginScreen({ onLoginSuccess }) {
   const [senha, setSenha] = useState('');
+  // Só usado pela senha de emergência (sem usuário cadastrado por trás) —
+  // pedido do Pablo (09/09/2026): "Ajustado por Administrador" não diz
+  // QUEM de verdade fez o ajuste. Quem loga com usuário/senha próprios já
+  // tem o nome certo (vem do cadastro), então esse campo não afeta esses
+  // casos — só sobrescreve o nome genérico "Administrador" quando a senha
+  // digitada é a de emergência.
+  const [nomeEmergencia, setNomeEmergencia] = useState('');
   const [entrando, setEntrando] = useState(false);
   const [erro, setErro] = useState('');
 
@@ -109,6 +116,9 @@ function LoginScreen({ onLoginSuccess }) {
     const usuario = await autenticar(senha);
     setEntrando(false);
     if (usuario) {
+      if (usuario.uid === 'bootstrap-admin' && nomeEmergencia.trim()) {
+        usuario.nome = nomeEmergencia.trim();
+      }
       onLoginSuccess(usuario);
     } else {
       setErro('Senha inválida.');
@@ -141,6 +151,22 @@ function LoginScreen({ onLoginSuccess }) {
               onChange={(e) => setSenha(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
             />
+          </label>
+
+          <label style={{ ...ui.label, marginBottom: 18 }}>
+            Seu nome
+            <input
+              type="text"
+              style={ui.input}
+              value={nomeEmergencia}
+              onChange={(e) => setNomeEmergencia(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+              placeholder="Opcional"
+            />
+            <span style={{ fontSize: 11, color: '#999', fontWeight: 400 }}>
+              Já tem usuário e senha próprios? Pode deixar em branco. Preencha só se estiver usando a
+              senha de emergência, pra ficar registrado quem fez cada ajuste/cancelamento.
+            </span>
           </label>
 
           <button onClick={handleLogin} style={styles.loginButton} disabled={entrando}>

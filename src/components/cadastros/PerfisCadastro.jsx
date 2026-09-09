@@ -16,7 +16,11 @@ function montarUrlAcesso(slug) {
   return `${base}?acesso=${slug}`;
 }
 
-export default function PerfisCadastro({ permissoes }) {
+// `compacto` renderiza um card menor (lista em vez de tabela, sem o texto
+// explicativo) — usado lado a lado com Usuários em CadastrosScreen.jsx
+// desde que as 2 telas viraram uma só (09/09/2026), mesmo padrão já usado
+// por FluxosCadastro/TurnosCadastro no grupo "Operação".
+export default function PerfisCadastro({ permissoes, compacto = false }) {
   const temAcesso = Boolean(permissoes.acessos?.perfis);
   const perm = { criar: temAcesso, editar: temAcesso, deletar: temAcesso };
 
@@ -113,11 +117,11 @@ export default function PerfisCadastro({ permissoes }) {
   };
 
   return (
-    <div>
+    <div style={compacto ? styles.cardCompacto : undefined}>
       <div style={ui.sectionHeaderRow}>
-        <h2 style={ui.sectionTitle}>Perfis</h2>
+        {compacto ? <h3 style={styles.tituloCompacto}>Perfis</h3> : <h2 style={ui.sectionTitle}>Perfis</h2>}
         {perm.criar && !formAberto && (
-          <button style={ui.primaryButton} onClick={abrirNovo}>
+          <button style={compacto ? ui.smallButton : ui.primaryButton} onClick={abrirNovo}>
             ➕ Novo perfil
           </button>
         )}
@@ -187,7 +191,43 @@ export default function PerfisCadastro({ permissoes }) {
           Firebase real configurado ainda — só a lista de perfis
           personalizados depende do Firestore carregar. */}
       {carregando && <p style={ui.placeholderNote}>Carregando perfis personalizados...</p>}
-      {
+      {compacto ? (
+        <div style={styles.listaCompacta}>
+          {listaCompleta.map((p) => (
+            <div key={p.id} style={styles.itemCompacto}>
+              <div>
+                <strong>{p.nome}</strong>{' '}
+                <span style={{ ...ui.badge, ...(p.sistema ? ui.badgeAzul : ui.badgeCinza) }}>
+                  {p.sistema ? 'Sistema' : 'Personalizado'}
+                </span>
+                {p.linkProprio && p.slug && (
+                  <div style={{ fontSize: 11, color: '#777', marginTop: 2, wordBreak: 'break-all' }}>
+                    🔗 {montarUrlAcesso(p.slug)}
+                  </div>
+                )}
+              </div>
+              <div>
+                {p.sistema ? (
+                  <span style={{ color: '#999', fontSize: 12 }}>Fixo</span>
+                ) : (
+                  <>
+                    {perm.editar && (
+                      <button style={ui.linkButton} onClick={() => abrirEdicao(p)}>
+                        Editar
+                      </button>
+                    )}
+                    {perm.deletar && (
+                      <button style={{ ...ui.linkButton, color: '#D32F2F' }} onClick={() => excluir(p)}>
+                        Excluir
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
         <div style={ui.tableWrapper}>
           <table style={ui.table}>
             <thead>
@@ -238,12 +278,31 @@ export default function PerfisCadastro({ permissoes }) {
             </tbody>
           </table>
         </div>
-      }
+      )}
     </div>
   );
 }
 
 const styles = {
+  cardCompacto: {
+    background: '#FFF',
+    borderRadius: 8,
+    padding: 16,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+    width: '100%',
+    maxWidth: 340
+  },
+  tituloCompacto: { margin: '0 0 12px', fontSize: 15, color: NAVY },
+  listaCompacta: { display: 'flex', flexDirection: 'column', gap: 10 },
+  itemCompacto: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: '8px 0',
+    borderBottom: '1px solid #EEE',
+    fontSize: 13
+  },
   linkProprioLabel: {
     display: 'flex',
     alignItems: 'flex-start',

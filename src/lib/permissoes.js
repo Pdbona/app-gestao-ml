@@ -49,8 +49,12 @@ export const CATALOGO_ACESSOS = [
   // usuário. Ver `souSupervisor` em ColetorScreen.jsx.
   { id: 'coletorSupervisao', label: 'Supervisão do Coletor (todas as operações)', icone: '🦺', area: 'capacidade' },
   { id: 'clientes', label: 'Cliente', icone: '🏢', area: 'cadastro' },
-  { id: 'perfis', label: 'Perfil', icone: '🛡️', area: 'cadastro' },
-  { id: 'usuarios', label: 'Usuários', icone: '👤', area: 'cadastro' },
+  // Perfil e Usuários (09/09/2026, pedido do Pablo) viraram uma única tela
+  // ("Usuários", grupo `usuarios`) em vez de 2 itens separados na sidebar —
+  // mesmo tratamento lado a lado já usado no grupo "Operação" (ver
+  // CadastrosScreen.jsx). Continuam 2 flags de RBAC independentes.
+  { id: 'perfis', label: 'Perfil', icone: '🛡️', area: 'cadastro', grupo: 'usuarios' },
+  { id: 'usuarios', label: 'Usuários', icone: '👤', area: 'cadastro', grupo: 'usuarios' },
   { id: 'colaboradores', label: 'Colaborador', icone: '🧑‍🔧', area: 'cadastro' },
   { id: 'turnos', label: 'Turno', icone: '🕐', area: 'cadastro', grupo: 'operacao' },
   { id: 'tiposOperacao', label: 'Tipo de Operação', icone: '⚙️', area: 'cadastro', grupo: 'operacao' },
@@ -58,7 +62,8 @@ export const CATALOGO_ACESSOS = [
 ];
 
 export const GRUPOS_CADASTRO = {
-  operacao: { label: 'Operação' }
+  operacao: { label: 'Operação' },
+  usuarios: { label: 'Usuários' }
 };
 
 // Mantido só como "view" filtrada do catálogo pra quem já lia

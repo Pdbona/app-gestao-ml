@@ -47,17 +47,39 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
   if (itemAtual.id === 'operacao') {
     const idsPresentes = itemAtual.secoes.map((s) => s.id);
     return (
-      <div style={styles.grupoOperacaoRow}>
+      <div style={styles.grupoLadoALadoRow}>
         {idsPresentes.includes('tiposOperacao') && (
           <div style={{ flex: 1, minWidth: 320 }}>
             <TiposOperacaoCadastro permissoes={permissoes} />
           </div>
         )}
-        <div style={styles.grupoOperacaoCol}>
+        <div style={styles.grupoLadoALadoCol}>
           {idsPresentes.includes('fluxos') && <FluxosCadastro permissoes={permissoes} compacto />}
           {idsPresentes.includes('turnos') && <TurnosCadastro permissoes={permissoes} compacto />}
           <SelfieConfigCard />
         </div>
+      </div>
+    );
+  }
+
+  // Perfil + Usuários unificados numa tela só (09/09/2026, pedido do
+  // Pablo) — mesmo tratamento lado a lado do grupo "Operação" acima:
+  // Usuários (uso do dia a dia) principal, Perfis (mexido raramente) num
+  // card compacto ao lado.
+  if (itemAtual.id === 'usuarios') {
+    const idsPresentes = itemAtual.secoes.map((s) => s.id);
+    return (
+      <div style={styles.grupoLadoALadoRow}>
+        {idsPresentes.includes('usuarios') && (
+          <div style={{ flex: 1, minWidth: 320 }}>
+            <UsuariosCadastro permissoes={permissoes} />
+          </div>
+        )}
+        {idsPresentes.includes('perfis') && (
+          <div style={styles.grupoLadoALadoCol}>
+            <PerfisCadastro permissoes={permissoes} compacto />
+          </div>
+        )}
       </div>
     );
   }
@@ -91,8 +113,8 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
 }
 
 const styles = {
-  grupoOperacaoRow: { display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' },
-  grupoOperacaoCol: { display: 'flex', flexDirection: 'column', gap: 20 },
+  grupoLadoALadoRow: { display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' },
+  grupoLadoALadoCol: { display: 'flex', flexDirection: 'column', gap: 20 },
   subNav: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 },
   subNavButton: {
     padding: '6px 14px',

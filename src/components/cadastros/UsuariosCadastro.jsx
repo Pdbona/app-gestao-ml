@@ -14,7 +14,12 @@ import { ui } from '../../lib/styles';
 import { PERFIL_ADMIN_PADRAO, REGEX_SENHA_LINK_PROPRIO } from '../../lib/permissoes';
 import PermissoesMatrix from '../PermissoesMatrix';
 
-const USUARIO_VAZIO = { nome: '', senha: '', perfilId: PERFIL_ADMIN_PADRAO.id, ativo: true };
+// `perfilId` começa vazio (09/09/2026, pedido do Pablo: o perfil
+// Administrador passou a ser só dele — "este perfil não ficará
+// disponível para vincular usuário") — antes um usuário novo já nascia
+// com Administrador pré-selecionado; agora precisa escolher um perfil de
+// verdade, igual a qualquer outro campo obrigatório do form.
+const USUARIO_VAZIO = { nome: '', senha: '', perfilId: '', ativo: true };
 
 export default function UsuariosCadastro({ permissoes }) {
   const temAcesso = Boolean(permissoes.acessos?.usuarios);
@@ -54,6 +59,13 @@ export default function UsuariosCadastro({ permissoes }) {
 
   const perfisDisponiveis = [PERFIL_ADMIN_PADRAO, ...perfis.filter((p) => p.id !== PERFIL_ADMIN_PADRAO.id)];
   const getPerfil = (id) => perfisDisponiveis.find((p) => p.id === id) || PERFIL_ADMIN_PADRAO;
+  // Administrador some das opções do select (09/09/2026, pedido do Pablo:
+  // "somente eu serei" o Administrador) — some, exceto se for o perfil já
+  // vinculado ao usuário sendo editado, senão o select ficaria sem opção
+  // selecionada pra quem já tem esse perfil (ex: usuários antigos).
+  const perfisSelecionaveis = perfisDisponiveis.filter(
+    (p) => p.id !== PERFIL_ADMIN_PADRAO.id || form.perfilId === PERFIL_ADMIN_PADRAO.id
+  );
 
   const abrirNovo = () => {
     setForm(USUARIO_VAZIO);
@@ -68,7 +80,7 @@ export default function UsuariosCadastro({ permissoes }) {
     setForm({
       nome: usuario.nome || '',
       senha: usuario.senha || '',
-      perfilId: usuario.perfilId || PERFIL_ADMIN_PADRAO.id,
+      perfilId: usuario.perfilId || '',
       ativo: usuario.ativo !== false
     });
     setPersonalizarPerm(Boolean(usuario.permissoesCustom));
@@ -102,6 +114,10 @@ export default function UsuariosCadastro({ permissoes }) {
     }
     if (!form.senha.trim()) {
       setErro('Informe a senha.');
+      return;
+    }
+    if (!form.perfilId) {
+      setErro('Selecione o perfil.');
       return;
     }
     const perfilDoUsuario = getPerfil(form.perfilId);
@@ -191,13 +207,14 @@ export default function UsuariosCadastro({ permissoes }) {
               />
             </label>
             <label style={ui.label}>
-              Perfil
+              Perfil *
               <select
                 style={ui.input}
                 value={form.perfilId}
                 onChange={(e) => setForm({ ...form, perfilId: e.target.value })}
               >
-                {perfisDisponiveis.map((p) => (
+                <option value="">Selecione...</option>
+                {perfisSelecionaveis.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.nome}
                   </option>
@@ -221,9 +238,11 @@ export default function UsuariosCadastro({ permissoes }) {
             <input
               type="checkbox"
               checked={personalizarPerm}
+              disabled={!form.perfilId}
               onChange={(e) => togglePersonalizar(e.target.checked)}
             />
             Personalizar permissões deste usuário (sobrepõe o perfil só para ele)
+            {!form.perfilId && <span style={{ fontSize: 12, color: '#999' }}>&nbsp;— selecione um perfil primeiro</span>}
           </label>
 
           {personalizarPerm && permCustom && (

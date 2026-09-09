@@ -163,10 +163,6 @@ function LoginScreen({ onLoginSuccess }) {
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               placeholder="Opcional"
             />
-            <span style={{ fontSize: 11, color: '#999', fontWeight: 400 }}>
-              Já tem usuário e senha próprios? Pode deixar em branco. Preencha só se estiver usando a
-              senha de emergência, pra ficar registrado quem fez cada ajuste/cancelamento.
-            </span>
           </label>
 
           <button onClick={handleLogin} style={styles.loginButton} disabled={entrando}>
@@ -434,7 +430,9 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
         )}
 
         <div style={styles.content} className="app-content">
-          {abaAtual === 'dashboard' && temDashboard && <DashboardTab />}
+          {abaAtual === 'dashboard' && temDashboard && (
+            <DashboardTab usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />
+          )}
           {abaAtual === 'cadastros' && temCadastros && (
             <CadastrosScreen permissoes={permissoes} secaoAtualId={secaoAtual?.id} />
           )}
@@ -447,7 +445,7 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
             <AjusteRegistrosScreen usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />
           )}
           {abaAtual === 'planejamento' && temPlanejamento && secaoPlanejamentoAtualResolvida?.id !== 'planejamentoAjuste' && (
-            <PlanejamentoScreen />
+            <PlanejamentoScreen usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />
           )}
           {abaAtual === 'relatorios' && temRelatorios && <RelatoriosScreen />}
           {abaAtual === 'autorizacoes' && temAutorizacoes && (

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { ui, NAVY } from '../lib/styles';
-import { hojeISO, addDiasISO, datasNoIntervalo, formatarDataBr, quinzenaAtual } from '../lib/data';
+import { ui, NAVY, ORANGE } from '../lib/styles';
+import { hojeISO, addDiasISO, datasNoIntervalo, formatarDataBr, quinzenaAtual, paraMillis, formatarDataHoraCurta } from '../lib/data';
 import { formatarCpf } from '../lib/cpf';
 import {
   filtrarRegistros,
@@ -55,6 +55,10 @@ export default function RelatoriosScreen() {
   // Dashboard (abre uma prévia em modal, o PDF de verdade só é gerado se
   // clicar em "Baixar PDF" lá dentro).
   const [modalListaPresenca, setModalListaPresenca] = useState(false);
+  // Drill-down dos cards de resumo (09/09/2026, pedido do Pablo: "permita
+  // que ao clicar nestes cards, demonstre estas ocorrências") — null =
+  // fechado, senão qual card foi clicado.
+  const [modalCard, setModalCard] = useState(null); // 'operacoes' | 'planejado' | 'absenteismo' | null
 
   const chartsRef = useRef({});
 
@@ -77,6 +81,8 @@ export default function RelatoriosScreen() {
   const nomeClienteAtual = clienteId ? cliente?.nome || 'Cliente' : 'Todos os clientes';
   const nomeTipo = (id) => tiposOperacao.find((t) => t.id === id)?.nome;
   const nomeFluxo = (id) => fluxos.find((f) => f.id === id)?.nome;
+  const nomeClientePorId = (id) => clientes.find((c) => c.id === id)?.nome || '(cliente removido)';
+  const nomeTurno = (id) => turnos.find((t) => t.id === id)?.nome || '(turno removido)';
   const periodoTurno = (t) => `${t.turnoHoraInicio || '--:--'}${t.turnoHoraFim ? ` às ${t.turnoHoraFim}` : ''}`;
 
   const datasPeriodo = useMemo(() => datasNoIntervalo(dataInicio, dataFim), [dataInicio, dataFim]);
@@ -172,6 +178,22 @@ export default function RelatoriosScreen() {
   };
   const opcoesComLegenda = { plugins: { legend: { display: true, position: 'top' } } };
 
+  // Cor do card de Absenteísmo por faixa de gravidade (mesmo espírito de
+  // "cor por status" da skill dataviz) — verde até 10%, laranja até 30%,
+  // vermelho acima disso.
+  const corAbsenteismo = (pct) => (pct <= 10 ? COR_STATUS_BOM : pct <= 30 ? ORANGE : '#D32F2F');
+
+  // Linhas do drill-down de "Operações no período" — mesma lista que
+  // alimenta os gráficos, só ordenada mais recente primeiro pra leitura.
+  const registrosParaModal = useMemo(
+    () => [...registrosFiltrados].sort((a, b) => (paraMillis(b.inicio) || 0) - (paraMillis(a.inicio) || 0)),
+    [registrosFiltrados]
+  );
+  const planejamentosParaModal = useMemo(
+    () => [...planejamentosFiltrados].sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0)),
+    [planejamentosFiltrados]
+  );
+
   const gerarPdf = async () => {
     setGerandoPdf(true);
     setErro('');
@@ -253,22 +275,47 @@ export default function RelatoriosScreen() {
       {erro && <div style={ui.erro}>❌ {erro}</div>}
 
       <>
+        <style>{`
+          .rel-card-destaque:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.16); transform: translateY(-2px); }
+        `}</style>
         <div style={{ ...ui.cardsRow, marginBottom: 20 }}>
-            <div style={ui.statCard}>
-              <div style={ui.statValue}>{resumo.totalOperacoes}</div>
-              <div style={ui.statLabel}>Operações no período</div>
+            <div
+              className="rel-card-destaque"
+              style={{ ...styles.cardDestaque, borderLeftColor: NAVY }}
+              role="button"
+              tabIndex={0}
+              onClick={() => setModalCard('operacoes')}
+              onKeyDown={(e) => e.key === 'Enter' && setModalCard('operacoes')}
+            >
+              <div style={{ ...styles.cardDestaqueValor, color: NAVY }}>{resumo.totalOperacoes}</div>
+              <div style={styles.cardDestaqueLabel}>Operações no período</div>
+              <div style={styles.cardDestaqueDica}>👁 Ver ocorrências</div>
             </div>
-            <div style={ui.statCard}>
-              <div style={ui.statValue}>{resumo.totalPlanejado}</div>
-              <div style={ui.statLabel}>Planejado</div>
+            <div
+              className="rel-card-destaque"
+              style={{ ...styles.cardDestaque, borderLeftColor: ORANGE }}
+              role="button"
+              tabIndex={0}
+              onClick={() => setModalCard('planejado')}
+              onKeyDown={(e) => e.key === 'Enter' && setModalCard('planejado')}
+            >
+              <div style={{ ...styles.cardDestaqueValor, color: ORANGE }}>{resumo.totalPlanejado}</div>
+              <div style={styles.cardDestaqueLabel}>Planejado</div>
+              <div style={styles.cardDestaqueDica}>👁 Ver ocorrências</div>
             </div>
-            <div style={ui.statCard}>
-              <div style={ui.statValue}>{resumo.totalPresente}</div>
-              <div style={ui.statLabel}>Presente</div>
-            </div>
-            <div style={ui.statCard}>
-              <div style={ui.statValue}>{resumo.absenteismoPct}%</div>
-              <div style={ui.statLabel}>Absenteísmo</div>
+            <div
+              className="rel-card-destaque"
+              style={{ ...styles.cardDestaque, borderLeftColor: corAbsenteismo(resumo.absenteismoPct) }}
+              role="button"
+              tabIndex={0}
+              onClick={() => setModalCard('absenteismo')}
+              onKeyDown={(e) => e.key === 'Enter' && setModalCard('absenteismo')}
+            >
+              <div style={{ ...styles.cardDestaqueValor, color: corAbsenteismo(resumo.absenteismoPct) }}>
+                {resumo.absenteismoPct}%
+              </div>
+              <div style={styles.cardDestaqueLabel}>Absenteísmo</div>
+              <div style={styles.cardDestaqueDica}>👁 Ver ocorrências</div>
             </div>
           </div>
 
@@ -473,6 +520,137 @@ export default function RelatoriosScreen() {
           </div>
         </div>
       )}
+
+      {modalCard && (
+        <div style={styles.overlay} onClick={() => setModalCard(null)}>
+          <div style={styles.modalOcorrencias} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, color: NAVY }}>
+              {modalCard === 'operacoes' && 'Operações no período'}
+              {modalCard === 'planejado' && 'Planejado'}
+              {modalCard === 'absenteismo' && 'Absenteísmo (planejado × presente)'}
+            </h3>
+            <p style={ui.placeholderNote}>
+              {nomeClienteAtual} — {formatarDataBr(dataInicio)} a {formatarDataBr(dataFim)}
+            </p>
+
+            {modalCard === 'operacoes' &&
+              (registrosParaModal.length === 0 ? (
+                <p style={ui.placeholderNote}>Nenhuma operação válida no período.</p>
+              ) : (
+                <div style={ui.tableWrapper}>
+                  <table style={ui.table}>
+                    <thead>
+                      <tr>
+                        <th style={ui.th}>Início</th>
+                        {!clienteId && <th style={ui.th}>Cliente</th>}
+                        <th style={ui.th}>Tipo</th>
+                        <th style={ui.th}>Operação</th>
+                        <th style={ui.th}>Documento</th>
+                        <th style={ui.th}>Volumes</th>
+                        <th style={ui.th}>MdO</th>
+                        <th style={ui.th}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registrosParaModal.map((r) => (
+                        <tr key={r.id}>
+                          <td style={ui.td}>{formatarDataHoraCurta(r.inicio)}</td>
+                          {!clienteId && <td style={ui.td}>{nomeClientePorId(r.clienteId)}</td>}
+                          <td style={ui.td}>{nomeTipo(r.tipoOperacaoId) || '(removido)'}</td>
+                          <td style={ui.td}>{nomeFluxo(r.fluxoId) || '(removido)'}</td>
+                          <td style={ui.td}>{r.documentoProcesso}</td>
+                          <td style={ui.td}>
+                            {r.qtdVolumes} {r.tipoVolume || ''}
+                          </td>
+                          <td style={ui.td}>{r.qtdMdo}</td>
+                          <td style={ui.td}>
+                            <span style={{ ...ui.badge, ...(r.fim ? ui.badgeVerde : ui.badgeAzul) }}>
+                              {r.fim ? 'Finalizada' : '🟢 Em andamento'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+
+            {modalCard === 'planejado' &&
+              (planejamentosParaModal.length === 0 ? (
+                <p style={ui.placeholderNote}>Nenhum planejamento no período.</p>
+              ) : (
+                <div style={ui.tableWrapper}>
+                  <table style={ui.table}>
+                    <thead>
+                      <tr>
+                        <th style={ui.th}>Data</th>
+                        {!clienteId && <th style={ui.th}>Cliente</th>}
+                        <th style={ui.th}>Turno</th>
+                        <th style={ui.th}>Qtd. MdO</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {planejamentosParaModal.map((p) => (
+                        <tr key={p.id}>
+                          <td style={ui.td}>{formatarDataBr(p.data)}</td>
+                          {!clienteId && <td style={ui.td}>{nomeClientePorId(p.clienteId)}</td>}
+                          <td style={ui.td}>{nomeTurno(p.turnoId)}</td>
+                          <td style={ui.td}>{p.qtdMdo}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+
+            {modalCard === 'absenteismo' &&
+              (dadosAbsenteismo.every((d) => d.planejado === 0 && d.presente === 0) ? (
+                <p style={ui.placeholderNote}>Sem planejamento nem presença no período.</p>
+              ) : (
+                <div style={ui.tableWrapper}>
+                  <table style={ui.table}>
+                    <thead>
+                      <tr>
+                        <th style={ui.th}>Data</th>
+                        <th style={ui.th}>Planejado</th>
+                        <th style={ui.th}>Presente</th>
+                        <th style={ui.th}>Diferença</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dadosAbsenteismo
+                        .filter((d) => d.planejado > 0 || d.presente > 0)
+                        .map((d) => (
+                          <tr key={d.data}>
+                            <td style={ui.td}>{formatarDataBr(d.data)}</td>
+                            <td style={ui.td}>{d.planejado}</td>
+                            <td style={ui.td}>{d.presente}</td>
+                            <td style={ui.td}>
+                              <span
+                                style={{
+                                  ...ui.badge,
+                                  ...(d.presente >= d.planejado ? ui.badgeVerde : ui.badgeVermelho)
+                                }}
+                              >
+                                {d.presente - d.planejado > 0 ? '+' : ''}
+                                {d.presente - d.planejado}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+
+            <div style={{ marginTop: 20 }}>
+              <button style={ui.secondaryButton} onClick={() => setModalCard(null)}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -491,6 +669,39 @@ const styles = {
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
   },
   graficoTitulo: { margin: '0 0 10px', fontSize: 14, color: NAVY },
+
+  // Cards de resumo com mais destaque (09/09/2026, pedido do Pablo) —
+  // valor bem maior, faixa colorida à esquerda (cor por card/gravidade,
+  // ver corAbsenteismo) e clicáveis (abrem o drill-down em `modalCard`).
+  // O card "Presente" foi removido a pedido dele (media com o card de
+  // Operações, que é de outra grandeza).
+  cardDestaque: {
+    background: '#FFF',
+    borderRadius: 8,
+    padding: '20px 22px 16px',
+    minWidth: 170,
+    textAlign: 'center',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+    borderLeft: '5px solid transparent',
+    cursor: 'pointer',
+    transition: 'box-shadow 0.15s, transform 0.15s'
+  },
+  cardDestaqueValor: { fontSize: 36, fontWeight: 800, lineHeight: 1.1 },
+  cardDestaqueLabel: { fontSize: 13, color: '#666', marginTop: 6, fontWeight: 600 },
+  cardDestaqueDica: { fontSize: 11, color: '#999', marginTop: 10 },
+
+  // Modal de drill-down dos cards acima — mesmo padrão visual dos outros
+  // modais da tela (overlay + card centralizado).
+  modalOcorrencias: {
+    background: '#FFF',
+    borderRadius: 10,
+    padding: '24px 28px',
+    maxWidth: 720,
+    width: '94%',
+    maxHeight: '88vh',
+    overflowY: 'auto',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.25)'
+  },
 
   // Modal de prévia da Lista de Presença — mesmo padrão visual do modal de
   // romaneio em DashboardTab.jsx (overlay + card + cabeçalho com logos +

@@ -68,18 +68,15 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
   // card compacto ao lado.
   if (itemAtual.id === 'usuarios') {
     const idsPresentes = itemAtual.secoes.map((s) => s.id);
+    // Grid (não flex:1 + largura fixa) pra manter as 2 colunas numa
+    // proporção fixa (~65/35) em vez do Usuários esticar pra preencher
+    // todo espaço sobrando e deixar a tabela com colunas espalhadas
+    // enquanto o card de Perfis fica apertado (feedback do Pablo,
+    // 09/09/2026: "ficou desproporcional").
     return (
-      <div style={styles.grupoLadoALadoRow}>
-        {idsPresentes.includes('usuarios') && (
-          <div style={{ flex: 1, minWidth: 320 }}>
-            <UsuariosCadastro permissoes={permissoes} />
-          </div>
-        )}
-        {idsPresentes.includes('perfis') && (
-          <div style={styles.grupoLadoALadoCol}>
-            <PerfisCadastro permissoes={permissoes} compacto />
-          </div>
-        )}
+      <div style={styles.duasColunasProporcao}>
+        {idsPresentes.includes('usuarios') && <UsuariosCadastro permissoes={permissoes} />}
+        {idsPresentes.includes('perfis') && <PerfisCadastro permissoes={permissoes} compacto />}
       </div>
     );
   }
@@ -115,6 +112,15 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
 const styles = {
   grupoLadoALadoRow: { display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' },
   grupoLadoALadoCol: { display: 'flex', flexDirection: 'column', gap: 20 },
+  // Usuários + Perfis (09/09/2026): grid com proporção fixa entre as 2
+  // colunas, pra nenhuma das 2 ficar esticada/apertada demais dependendo
+  // da largura da tela — ver comentário acima de onde é usado.
+  duasColunasProporcao: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(420px, 1.9fr) minmax(300px, 1fr)',
+    gap: 20,
+    alignItems: 'start'
+  },
   subNav: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 },
   subNavButton: {
     padding: '6px 14px',

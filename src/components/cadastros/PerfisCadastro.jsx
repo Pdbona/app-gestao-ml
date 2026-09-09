@@ -284,13 +284,15 @@ export default function PerfisCadastro({ permissoes, compacto = false }) {
 }
 
 const styles = {
+  // Sem `maxWidth` fixo (09/09/2026: removido, ficava apertado demais) —
+  // quem chama define a largura de fora (grid de CadastrosScreen.jsx), o
+  // card só preenche 100% da coluna que recebe.
   cardCompacto: {
     background: '#FFF',
     borderRadius: 8,
     padding: 16,
     boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-    width: '100%',
-    maxWidth: 340
+    width: '100%'
   },
   tituloCompacto: { margin: '0 0 12px', fontSize: 15, color: NAVY },
   listaCompacta: { display: 'flex', flexDirection: 'column', gap: 10 },

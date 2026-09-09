@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, updateDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ui, NAVY } from '../lib/styles';
 import { limparSelfiesVencidas } from '../lib/limpezaSelfies';
 import { limparFotosOperacaoVencidas } from '../lib/limpezaFotosOperacao';
+import { planejamentosSemRegistro, cancelarPlanejamentosSemRegistroVencidos } from '../lib/planejamentoSemRegistro';
 import { gerarRomaneioPdf } from '../lib/romaneio';
 import { obterLogoMlBase64 } from '../lib/logoAssets';
 import {
@@ -13,6 +14,7 @@ import {
   paraMillis,
   ehMesmoDia,
   formatarHorario,
+  formatarDataBr,
   formatarDataHoraCurta,
   tempoDecorridoTexto
 } from '../lib/data';
@@ -102,6 +104,20 @@ export default function DashboardTab({ usuario }) {
     limparFotosOperacaoVencidas().catch(() => {});
   }, []);
 
+  // Cancela sozinho (09/09/2026, pedido do Pablo) planejamento sem
+  // registro que já estourou os 2 dias úteis de prazo — mesma filosofia
+  // preguiçosa acima, só que precisa esperar `planejamentos`/`registros`
+  // carregarem de verdade (chegam via onSnapshot, ainda vazios no
+  // primeiro render), por isso o guard com `useRef` em vez de rodar 1x
+  // incondicionalmente no mount.
+  const jaRodouLimpezaPlanejamento = useRef(false);
+  useEffect(() => {
+    if (jaRodouLimpezaPlanejamento.current) return;
+    if (planejamentos.length === 0 && registros.length === 0) return;
+    jaRodouLimpezaPlanejamento.current = true;
+    cancelarPlanejamentosSemRegistroVencidos(planejamentos, registros, hojeISO()).catch(() => {});
+  }, [planejamentos, registros]);
+
   useEffect(() => {
     const t = setInterval(() => setAgora(Date.now()), 30000);
     return () => clearInterval(t);
@@ -109,6 +125,15 @@ export default function DashboardTab({ usuario }) {
 
   const hoje = hojeISO();
   const proximasDatas = useMemo(() => Array.from({ length: 7 }).map((_, i) => addDiasISO(hoje, i)), [hoje]);
+
+  // Planejamento de dia passado sem nenhum registro do Coletor pro mesmo
+  // cliente naquele dia (09/09/2026, pedido do Pablo) — ver
+  // lib/planejamentoSemRegistro.js pra regra completa (dia útil
+  // seguinte = alerta, 2 dias úteis sem ação = cancela sozinho).
+  const planejamentosSemRegistroLista = useMemo(
+    () => planejamentosSemRegistro(planejamentos, registros, hoje),
+    [planejamentos, registros, hoje]
+  );
 
   const cliente = (id) => clientes.find((c) => c.id === id);
   const nomeCliente = (id) => cliente(id)?.nome || '(cliente removido)';
@@ -350,6 +375,25 @@ export default function DashboardTab({ usuario }) {
     }
   };
 
+  // Cancelamento manual de um planejamento sem registro (09/09/2026) —
+  // mesmo efeito de deixar o prazo de 2 dias úteis estourar, só que por
+  // decisão de quem está vendo o alerta agora (fica registrado com o
+  // nome de quem cancelou, não "Sistema (automático)").
+  const cancelarPlanejamentoSemRegistro = async (p) => {
+    if (!window.confirm(`Cancelar o planejamento de ${formatarDataBr(p.data)} (${nomeCliente(p.clienteId)})?`)) return;
+    try {
+      await updateDoc(doc(db, 'planejamentoOperacional', p.id), {
+        cancelado: true,
+        canceladoPorNome: usuario.nome,
+        canceladoEm: serverTimestamp()
+      });
+    } catch (e) {
+      // Sem estado de erro próprio aqui — o card some sozinho quando o
+      // cancelamento pegar (onSnapshot); se falhar, a pessoa só tenta de
+      // novo.
+    }
+  };
+
   return (
     <div>
       <h2 style={ui.sectionTitle}>Dashboard</h2>
@@ -450,6 +494,45 @@ export default function DashboardTab({ usuario }) {
                 </div>
               );
             })}
+          </div>
+        </>
+      )}
+
+      {/* ===== 1.6) Planejamento sem registro operacional (09/09/2026) —
+          dia passado, MdO foi planejada, mas ninguém passou pelo
+          Coletor pra esse cliente naquele dia. Some sozinho quando
+          alguém ajusta/cancela ou quando estoura o prazo automático. ===== */}
+      {planejamentosSemRegistroLista.length > 0 && (
+        <>
+          <h3 style={{ ...ui.sectionTitle, fontSize: 16, marginTop: 28 }}>⚠️ Planejamento sem registro operacional</h3>
+          <p style={{ ...ui.placeholderNote, marginTop: -4, marginBottom: 10 }}>
+            Tinha MdO planejada nesses dias, mas nenhuma operação foi registrada no Coletor pro
+            cliente. Ajuste em Planejamento (se foi engano) ou cancele — sem ação, cancela sozinho
+            no prazo indicado.
+          </p>
+          <div style={styles.listaAberto}>
+            {planejamentosSemRegistroLista.map((p) => (
+              <div key={p.id} style={{ ...styles.itemAberto, ...styles.itemAbertoParado }}>
+                <div>
+                  <strong style={{ color: NAVY }}>{nomeCliente(p.clienteId)}</strong> — {nomeTurno(p.turnoId)}
+                  <div style={styles.itemAbertoDetalhe}>
+                    {formatarDataBr(p.data)} · {p.qtdMdo} MdO planejada
+                  </div>
+                  <div style={{ ...styles.itemAbertoDetalhe, color: '#C0392B' }}>
+                    {p.podeSerCanceladoAutomatico
+                      ? 'Prazo estourado — será cancelado automaticamente na próxima verificação.'
+                      : `Sem ação até ${formatarDataBr(p.diaUtilCancelamento)}, cancela automaticamente.`}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  style={{ ...ui.linkButton, color: '#D32F2F', marginRight: 0 }}
+                  onClick={() => cancelarPlanejamentoSemRegistro(p)}
+                >
+                  Cancelar agora
+                </button>
+              </div>
+            ))}
           </div>
         </>
       )}

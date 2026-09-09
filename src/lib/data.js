@@ -227,6 +227,25 @@ export function duracaoEntreHorarios(horaInicio, horaFim) {
   return fimMin - inicioMin;
 }
 
+// Sábado ou domingo — não considera feriados (o app ainda não tem
+// calendário de feriados). Usada pra "dia útil seguinte"/"N dias úteis
+// depois" (lib/planejamentoSemRegistro.js).
+export function ehFimDeSemana(iso) {
+  const dia = new Date(`${iso}T00:00:00`).getDay();
+  return dia === 0 || dia === 6;
+}
+
+// Soma N dias ÚTEIS (pula sábado/domingo) a uma data ISO.
+export function addDiasUteisISO(iso, n) {
+  let atual = iso;
+  let restantes = n;
+  while (restantes > 0) {
+    atual = addDiasISO(atual, 1);
+    if (!ehFimDeSemana(atual)) restantes -= 1;
+  }
+  return atual;
+}
+
 // { inicio, fim } (ISO) da quinzena corrente a partir de diaISO: dia 1-15 do
 // mês, ou dia 16-até o último dia do mês. Usada como período padrão do
 // relatório de presença (ciclo de cobrança quinzenal da ML).

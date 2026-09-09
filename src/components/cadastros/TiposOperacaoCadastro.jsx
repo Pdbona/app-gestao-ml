@@ -103,6 +103,15 @@ export default function TiposOperacaoCadastro({ permissoes }) {
       setErro('Informe o nome do tipo de operação.');
       return;
     }
+    // Sem nome repetido (09/09/2026, pedido do Pablo) — mesma checagem de
+    // FluxosCadastro.jsx/TurnosCadastro.jsx.
+    const duplicado = tipos.some(
+      (t) => t.id !== editandoId && t.nome.trim().toLowerCase() === form.nome.trim().toLowerCase()
+    );
+    if (duplicado) {
+      setErro('Já existe um tipo de operação com esse nome.');
+      return;
+    }
     setSalvando(true);
     setErro('');
     try {

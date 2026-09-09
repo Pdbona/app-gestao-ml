@@ -66,6 +66,16 @@ export default function FluxosCadastro({ permissoes, compacto = false }) {
       setErro('Informe o nome da operação.');
       return;
     }
+    // Sem nome repetido (09/09/2026, pedido do Pablo, depois de ver a
+    // lista com "Expedição"/"Recebimento"/"Separação" duplicados) —
+    // compara sem diferenciar maiúscula/minúscula nem espaços nas pontas.
+    const duplicado = fluxos.some(
+      (f) => f.id !== editandoId && f.nome.trim().toLowerCase() === form.nome.trim().toLowerCase()
+    );
+    if (duplicado) {
+      setErro('Já existe uma operação com esse nome.');
+      return;
+    }
     setSalvando(true);
     setErro('');
     try {

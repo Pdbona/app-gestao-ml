@@ -104,6 +104,15 @@ export default function TurnosCadastro({ permissoes, compacto = false }) {
       setErro('Informe a duração do turno (maior que zero).');
       return;
     }
+    // Sem nome repetido (09/09/2026, pedido do Pablo) — mesma checagem de
+    // FluxosCadastro.jsx/TiposOperacaoCadastro.jsx.
+    const duplicado = turnos.some(
+      (t) => t.id !== editandoId && t.nome.trim().toLowerCase() === form.nome.trim().toLowerCase()
+    );
+    if (duplicado) {
+      setErro('Já existe um turno com esse nome.');
+      return;
+    }
     setSalvando(true);
     setErro('');
     try {

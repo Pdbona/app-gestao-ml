@@ -6,10 +6,13 @@ import { dataLocalISO, paraMillis } from './data';
 // Filtra por clienteId + intervalo [dataInicio, dataFim] (strings
 // YYYY-MM-DD). `campoData` é o nome do campo com a data — Timestamp de
 // verdade (registrosOperacao.inicio) ou já string ISO
-// (planejamentoOperacional.data / presencas.data).
+// (planejamentoOperacional.data / presencas.data). `clienteId` vazio
+// (09/09/2026, pedido do Pablo: "traga como default os dados de TODAS as
+// operações") significa "todos os clientes" — não filtra por cliente
+// nenhum, só pelo período.
 function noPeriodo(itens, clienteId, dataInicio, dataFim, campoData, ehTimestamp) {
   return itens.filter((item) => {
-    if (item.clienteId !== clienteId) return false;
+    if (clienteId && item.clienteId !== clienteId) return false;
     const dataItem = ehTimestamp ? dataLocalISO(new Date(paraMillis(item[campoData]))) : item[campoData];
     return dataItem >= dataInicio && dataItem <= dataFim;
   });

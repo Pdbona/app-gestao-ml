@@ -74,6 +74,7 @@ export default function RelatoriosScreen() {
   }, []);
 
   const cliente = clientes.find((c) => c.id === clienteId);
+  const nomeClienteAtual = clienteId ? cliente?.nome || 'Cliente' : 'Todos os clientes';
   const nomeTipo = (id) => tiposOperacao.find((t) => t.id === id)?.nome;
   const nomeFluxo = (id) => fluxos.find((f) => f.id === id)?.nome;
   const periodoTurno = (t) => `${t.turnoHoraInicio || '--:--'}${t.turnoHoraFim ? ` às ${t.turnoHoraFim}` : ''}`;
@@ -81,15 +82,15 @@ export default function RelatoriosScreen() {
   const datasPeriodo = useMemo(() => datasNoIntervalo(dataInicio, dataFim), [dataInicio, dataFim]);
 
   const registrosFiltrados = useMemo(
-    () => (clienteId ? filtrarRegistros(registros, clienteId, dataInicio, dataFim) : []),
+    () => filtrarRegistros(registros, clienteId, dataInicio, dataFim),
     [registros, clienteId, dataInicio, dataFim]
   );
   const planejamentosFiltrados = useMemo(
-    () => (clienteId ? filtrarPlanejamentos(planejamentos, clienteId, dataInicio, dataFim) : []),
+    () => filtrarPlanejamentos(planejamentos, clienteId, dataInicio, dataFim),
     [planejamentos, clienteId, dataInicio, dataFim]
   );
   const presencasFiltradas = useMemo(
-    () => (clienteId ? filtrarPresencas(presencas, clienteId, dataInicio, dataFim) : []),
+    () => filtrarPresencas(presencas, clienteId, dataInicio, dataFim),
     [presencas, clienteId, dataInicio, dataFim]
   );
 
@@ -112,7 +113,7 @@ export default function RelatoriosScreen() {
   );
 
   const presencasFiltradasPeriodo = useMemo(
-    () => (clienteId ? filtrarPresencas(presencas, clienteId, dataInicioPresenca, dataFimPresenca) : []),
+    () => filtrarPresencas(presencas, clienteId, dataInicioPresenca, dataFimPresenca),
     [presencas, clienteId, dataInicioPresenca, dataFimPresenca]
   );
   // Ordem pedida pelo Pablo: data crescente, turno (pelo horaInicio
@@ -172,7 +173,6 @@ export default function RelatoriosScreen() {
   const opcoesComLegenda = { plugins: { legend: { display: true, position: 'top' } } };
 
   const gerarPdf = async () => {
-    if (!clienteId) return;
     setGerandoPdf(true);
     setErro('');
     try {
@@ -184,7 +184,7 @@ export default function RelatoriosScreen() {
         absenteismo: chartsRef.current.absenteismo?.canvas.toDataURL('image/png', 1.0)
       };
       await gerarRelatorioPdf({
-        clienteNome: cliente?.nome || 'Cliente',
+        clienteNome: nomeClienteAtual,
         dataInicio,
         dataFim,
         resumo,
@@ -205,7 +205,7 @@ export default function RelatoriosScreen() {
     try {
       const logoMlBase64 = await obterLogoMlBase64();
       await gerarRelatorioPresencaPdf({
-        clienteNome: cliente?.nome || 'Cliente',
+        clienteNome: nomeClienteAtual,
         dataInicio: dataInicioPresenca,
         dataFim: dataFimPresenca,
         agrupado: presencaAgrupada,
@@ -223,15 +223,16 @@ export default function RelatoriosScreen() {
     <div>
       <h2 style={ui.sectionTitle}>Relatórios</h2>
       <p style={ui.placeholderNote}>
-        Escolha um Cliente/Local e um período pra ver os registros com gráficos — a Dashboard fica só
-        com o dia corrente, esta tela é pra olhar períodos anteriores.
+        Por padrão mostra os dados de TODAS as operações (só as válidas — canceladas não entram nos
+        gráficos nem nos totais); escolha um Cliente/Local pra ver só o dele. Período pra olhar pra
+        trás — a Dashboard fica só com o dia corrente.
       </p>
 
       <div style={ui.formGrid}>
         <label style={ui.label}>
-          Cliente/Local *
+          Cliente/Local
           <select style={ui.input} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-            <option value="">Selecione...</option>
+            <option value="">Todos os clientes</option>
             {clientes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nome}
@@ -251,11 +252,8 @@ export default function RelatoriosScreen() {
 
       {erro && <div style={ui.erro}>❌ {erro}</div>}
 
-      {!clienteId ? (
-        <p style={ui.placeholderNote}>Selecione um cliente pra ver o relatório.</p>
-      ) : (
-        <>
-          <div style={{ ...ui.cardsRow, marginBottom: 20 }}>
+      <>
+        <div style={{ ...ui.cardsRow, marginBottom: 20 }}>
             <div style={ui.statCard}>
               <div style={ui.statValue}>{resumo.totalOperacoes}</div>
               <div style={ui.statLabel}>Operações no período</div>
@@ -358,8 +356,7 @@ export default function RelatoriosScreen() {
           >
             👁 Ver lista de presença
           </button>
-        </>
-      )}
+      </>
 
       {modalListaPresenca && (
         <div style={styles.overlay} onClick={() => setModalListaPresenca(false)}>
@@ -369,7 +366,7 @@ export default function RelatoriosScreen() {
               <div style={{ textAlign: 'center' }}>
                 <h3 style={{ margin: 0, color: NAVY }}>Lista de Presença</h3>
                 <p style={{ margin: '2px 0 0', fontSize: 13, color: '#666' }}>
-                  {cliente?.nome} — {formatarDataBr(dataInicioPresenca)} a {formatarDataBr(dataFimPresenca)}
+                  {nomeClienteAtual} — {formatarDataBr(dataInicioPresenca)} a {formatarDataBr(dataFimPresenca)}
                 </p>
               </div>
               {cliente?.logoBase64 ? (

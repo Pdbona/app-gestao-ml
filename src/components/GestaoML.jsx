@@ -171,7 +171,12 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
   const [secaoCadastroAtual, setSecaoCadastroAtual] = useState(null);
   const [planejamentoExpandido, setPlanejamentoExpandido] = useState(false);
   const [secaoPlanejamentoAtual, setSecaoPlanejamentoAtual] = useState(null);
-  const [pendentesAutorizacao, setPendentesAutorizacao] = useState(0);
+  // Guarda os docs pendentes inteiros (não só a contagem) desde 09/09/2026
+  // — pedido do Pablo: "no alerta, já indique qual cliente" (antes só
+  // dizia "1 solicitação pendente", sem dizer de qual Cliente/Local, só
+  // aparecia depois de clicar "Ver agora").
+  const [solicitacoesPendentes, setSolicitacoesPendentes] = useState([]);
+  const pendentesAutorizacao = solicitacoesPendentes.length;
 
   // Perfil "exclusivo" de Coletor (só essa aba habilitada) já cai direto
   // na tela do Coletor; qualquer outro caso cai no Dashboard, como sempre.
@@ -188,16 +193,23 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
   // próprio efeito decide se inscreve ou não.
   useEffect(() => {
     if (!usuarioAtivo?.permissoes?.acessos?.autorizacoes) {
-      setPendentesAutorizacao(0);
+      setSolicitacoesPendentes([]);
       return undefined;
     }
     const unsub = onSnapshot(
       collection(db, 'solicitacoesPresenca'),
-      (snap) => setPendentesAutorizacao(snap.docs.filter((d) => d.data().status === 'pendente').length),
-      () => setPendentesAutorizacao(0)
+      (snap) =>
+        setSolicitacoesPendentes(
+          snap.docs.filter((d) => d.data().status === 'pendente').map((d) => ({ id: d.id, ...d.data() }))
+        ),
+      () => setSolicitacoesPendentes([])
     );
     return () => unsub();
   }, [usuarioAtivo]);
+
+  // Nomes distintos dos clientes com solicitação pendente, na ordem em
+  // que apareceram — usado só pro texto do popup/aviso abaixo.
+  const clientesComPendencia = [...new Set(solicitacoesPendentes.map((s) => s.clienteNome).filter(Boolean))];
 
   if (!usuarioAtivo) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
@@ -412,7 +424,11 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
             <DashboardTab usuario={{ uid: usuarioAtivo.uid, nome: usuarioAtivo.nome }} />
           )}
           {abaAtual === 'cadastros' && temCadastros && (
-            <CadastrosScreen permissoes={permissoes} secaoAtualId={secaoAtual?.id} />
+            <CadastrosScreen
+              permissoes={permissoes}
+              secaoAtualId={secaoAtual?.id}
+              souAdministrador={usuarioAtivo.perfilId === PERFIL_ADMIN_PADRAO.id}
+            />
           )}
           {abaAtual === 'coletor' && temColetor && (
             <ColetorScreen
@@ -448,8 +464,12 @@ export default function GestaoML({ usuarioInicial = null, onSair = null }) {
           <button type="button" style={styles.popupAutorizacao} onClick={() => setAbaAtual('autorizacoes')}>
             <span style={styles.popupAutorizacaoIcone}>🔔</span>
             <span>
-              <strong>{pendentesAutorizacao}</strong> solicitação{pendentesAutorizacao > 1 ? 'ões' : ''} de presença
+              <strong>{pendentesAutorizacao}</strong> solicitaç{pendentesAutorizacao > 1 ? 'ões' : 'ão'} de presença
               pendente{pendentesAutorizacao > 1 ? 's' : ''}
+              {clientesComPendencia.length > 0 && clientesComPendencia.length <= 2 && (
+                <> — {clientesComPendencia.join(', ')}</>
+              )}
+              {clientesComPendencia.length > 2 && <> em {clientesComPendencia.length} clientes</>}
               <br />
               <span style={styles.popupAutorizacaoLink}>Ver agora →</span>
             </span>

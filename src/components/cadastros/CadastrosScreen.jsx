@@ -29,7 +29,7 @@ const TELAS = {
 // entrou nesse grupo depois, junto com Operação, já que nenhum dos dois tem
 // vínculo direto com Tipo de Operação no cadastro). Um futuro grupo sem
 // esse tratamento especial cai no fallback de sub-abas.
-export default function CadastrosScreen({ permissoes, secaoAtualId }) {
+export default function CadastrosScreen({ permissoes, secaoAtualId, souAdministrador = false }) {
   const navegacao = montarNavegacaoCadastros(permissoes);
   const [subSecaoPorGrupo, setSubSecaoPorGrupo] = useState({});
 
@@ -56,7 +56,10 @@ export default function CadastrosScreen({ permissoes, secaoAtualId }) {
         <div style={styles.grupoLadoALadoCol}>
           {idsPresentes.includes('fluxos') && <FluxosCadastro permissoes={permissoes} compacto />}
           {idsPresentes.includes('turnos') && <TurnosCadastro permissoes={permissoes} compacto />}
-          <SelfieConfigCard />
+          {/* Selfie do check-in só aparece pro Administrador (09/09/2026,
+              pedido do Pablo) — os outros perfis que têm acesso a este
+              grupo (Diretoria, Líder...) não veem mais essa configuração. */}
+          {souAdministrador && <SelfieConfigCard />}
         </div>
       </div>
     );
